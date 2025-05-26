@@ -1,0 +1,196 @@
+<context>
+# Overview  
+COMP4702 Machine Learning Assignment - Build a fully-reproducible ML pipeline that predicts the swing-related target in assignTTSWING.csv. The project requires implementing three different model families (linear/baseline, tree-based ensemble, neural network), comprehensive evaluation, and a polished PDF report with version-controlled code and markdown documentation. All analysis must demonstrate understanding through detailed explanations, result discussions, and connections to COMP4702 course concepts from ML lecture notes.
+
+# Core Features  
+## Data Processing Pipeline
+- Load and analyze assignTTSWING.csv dataset schema and basic statistics
+- Visual EDA with pair-plots, correlation heat-maps, class distribution analysis
+- Data cleaning: drop irrelevant/ID columns, handle missing values
+- Feature scaling/normalization and optional PCA implementation
+- Problem framing decision (classification vs regression)
+
+## Three Model Implementation
+- Baseline Linear/Logistic model with hyperparameter grid search
+- Tree-based Ensemble (RF/XGBoost/LightGBM) with feature importance analysis
+- Neural Network (MLP or 1-D CNN) with learning curve tracking
+- Cross-validation and hyperparameter optimization for all models
+
+## Evaluation and Comparison Framework
+- Consolidated metrics table across all three models
+- ROC/PR curves or residual plots as appropriate
+- Statistical significance testing and cross-fold variance analysis
+- Feature importance and error analysis documentation
+
+## Documentation and Reporting System
+- SCOPE.md for data cleaning and EDA decisions with detailed explanations
+- Individual model_*.md files for each model family with comprehensive result analysis
+- COMPARE.md for side-by-side comparison and final model selection
+- Final ML_assignment.pdf report (no page limit) compiled from markdown sources
+- All documentation must reference ML lecture notes and demonstrate understanding through detailed discussions
+
+# Stakeholders
+- COMP4702 course instructors and TAs for grading against specific rubric criteria
+- Peer reviewers for code quality and reproducibility assessment
+</context>
+<PRD>
+# Technical Architecture  
+## System Components
+- Python 3.11 environment with conda/venv
+- Core ML stack: pandas, numpy, scikit-learn, matplotlib/seaborn
+- Advanced libraries: imbalanced-learn, shap, torch/tensorflow (all non-standard libraries must be properly referenced)
+- Development tools: Jupyter notebooks, Git version control
+- Reproducibility: Fixed random seeds across all experiments (documented in config.py or requirements.txt)
+- Optional: DVC for data versioning, Git-LFS for large files
+- ML lecture notes as primary reference for theoretical concepts and course-specific methodologies
+
+## Data Models
+- assignTTSWING.csv dataset with swing-related target variable
+- Preprocessed feature matrices with scaling/normalization
+- Model configurations and hyperparameters for three families
+- Evaluation metrics storage and comparison tables
+- Documentation artifacts in markdown format
+
+## Development Environment
+- Cursor IDE with built-in LLM agent for code and prose co-editing
+- Git repository with structured commit history
+- Organized directory structure: src/, notebooks/, figures/, docs/
+- Requirements.txt for reproducible environment setup
+
+# Development Roadmap  
+## Phase 0: Repository & Environment Setup
+- Initialize Git repository and configure remote
+- Add dataset files and assignment PDFs to repository
+- Create Python 3.11 environment with requirements.txt
+- Configure .gitignore and optional DVC setup
+
+## Phase A: Data Understanding & Preprocessing
+- Load assignTTSWING.csv and analyze schema/basic statistics with detailed explanations
+- Conduct visual EDA: pair-plots, correlation analysis, distribution plots with interpretive commentary
+- Ensure all plots have clearly labelled axes, titles, legends, and comprehensive captions
+- Clean data: remove irrelevant columns, handle missing values with justified reasoning
+- Implement feature scaling/normalization pipeline with theoretical connections to course concepts
+- Assess and implement PCA if needed (≥90% variance in ≤20 components) with mathematical explanation
+- Finalize problem framing (classification vs regression) with reference to ML lecture notes
+- Document all decisions in SCOPE.md with comprehensive analysis and course concept connections
+- Create ASSUMPTIONS.md to log all key assumptions made during preprocessing and analysis
+
+## Phase B: Model Implementation (Parallel Development)
+- B1: Baseline Linear/Logistic model with scaling pipeline and grid search, explained with course theory
+- B2: Tree-based ensemble with cross-validation and feature importance, connected to lecture concepts
+- B3: Neural network with architecture design and learning curve tracking, related to course materials
+- Document each model in respective model_*.md files with detailed step-by-step explanations
+- All results must be presented with comprehensive comments and discussion demonstrating understanding
+- Minimal background theory - focus on relating implementations back to COMP4702 course concepts
+
+## Phase C: Evaluation & Comparison
+- Implement proper train/validation/test split strategy with explicit final test-set evaluation
+- Consolidate all model metrics into comparison table with detailed interpretation
+- Generate appropriate visualization (ROC/PR curves or residual plots) with comprehensive analysis
+- Perform statistical significance testing with explanation of methodology and results
+- Final model evaluation on held-out test set following Chapter 4 best practices from lecture notes
+- Write interpretive analysis in COMPARE.md connecting findings to course concepts
+- All outputs must include detailed comments demonstrating understanding of results
+
+## Phase D: Report Generation
+- Draft abstract and introduction sections with clear problem statement
+- Insert key figures and tables from analysis with detailed captions and discussions
+- Ensure all rubric criteria are addressed with proper referencing to ML lecture notes
+- Conduct peer/self review for clarity, formatting, and demonstration of understanding
+- Focus on analysis quality over theoretical background, connecting all work to course concepts
+
+## Phase E: Finalization
+- Convert markdown documentation to PDF format
+- Tag repository release (v1.0) and push final version
+- Prepare submission with PDF report and repository link
+
+# Logical Dependency Chain
+## Foundation Requirements
+- Repository and environment setup must be completed before any development
+- Data loading and EDA must precede all modeling work
+- Data preprocessing pipeline must be finalized before model training
+- Basic evaluation framework needed before advanced model comparison
+
+## Parallel Development Strategy
+- Three model families can be developed in parallel after data preprocessing
+- Each model requires independent documentation in model_*.md files
+- All models must be completed before comparative evaluation
+- Documentation should be maintained throughout, not deferred to end
+
+## Quality Assurance Priority
+- Early data quality assessment to identify preprocessing needs
+- Baseline model implementation to establish minimum viable pipeline
+- Regular progress checkpoints against rubric criteria
+- Version control commits at each major milestone
+
+# Quality Standards and Expectations
+
+## Analysis and Documentation Requirements
+- **Step-by-step explanations**: Every key analytical step must be thoroughly explained with reasoning
+- **Result interpretation**: All outputs, figures, tables, and metrics must include detailed interpretive discussion
+- **Understanding demonstration**: Comments and analysis must clearly show comprehension of underlying concepts
+- **Course integration**: All methodologies and results must be explicitly connected to COMP4702 ML lecture notes
+- **Reference compliance**: Any libraries beyond standard ML stack (pandas, numpy, scikit-learn, matplotlib) must be properly cited
+- **Minimal theory**: Avoid extensive background theory sections; focus on practical application and course concept connections
+
+## Quality Benchmarks
+- **Example assignments available**: While example assignments are provided, they represent minimum acceptable quality
+- **Exceed example standards**: Aim for significantly higher quality analysis and documentation than provided examples
+- **No page limits**: Focus on depth and quality of analysis rather than brevity
+- **Comprehensive coverage**: Every decision, result, and finding must be documented with supporting rationale
+
+## Documentation Standards
+- **Detailed captions**: All figures and tables must have comprehensive captions explaining what is shown and why it matters
+- **Plot presentation**: Ensure all plots have clearly labelled axes, titles, legends, and descriptive captions
+- **Interpretive analysis**: Raw results are insufficient; must include analysis of what results mean and implications
+- **Course concept mapping**: Explicitly relate all work back to specific concepts from ML lecture notes
+- **Methodological justification**: Explain why specific approaches were chosen with reference to course materials
+
+# Risks and Mitigations  
+## Technical Challenges
+- Dataset imbalance: Use stratified splits, class weights, or SMOTE techniques
+- Model overfitting: Implement cross-validation, learning curves, regularization
+- Computational resources: Optimize algorithms and use efficient implementations
+- Reproducibility: Use random seeds and comprehensive version control
+
+## Academic Requirements
+- Rubric compliance: Regular review against ML_assignment_criteria.pdf
+- Documentation quality: Maintain detailed markdown files with comprehensive explanations throughout development
+- Reference compliance: All non-standard libraries and methodologies must be properly cited
+- Analysis depth: Every step of analysis must be explained with demonstration of understanding
+- Course integration: All work must connect back to COMP4702 ML lecture notes and course concepts
+- Result presentation: All outputs must include detailed comments and interpretive discussion
+- Assumptions documentation: Maintain comprehensive log of all key assumptions in ASSUMPTIONS.md
+- Reproducibility: Implement and document random seed management across all experiments
+- Final evaluation: Conduct proper test-set evaluation following Chapter 4 methodology from lecture notes
+- Time management: Phased development with clear milestone deadlines
+- Code quality: Consistent documentation and testing practices
+
+## Implementation Risks
+- Markdown documentation bloat: Split docs by phase, store large outputs in /figures
+- Model comparison complexity: Standardize evaluation metrics across all models
+- Report generation: Plan markdown-to-PDF conversion process early
+- Final submission: Ensure all deliverables meet assignment requirements
+
+# Appendix  
+## Required Deliverables
+- SCOPE.md: Data cleaning and EDA decisions with key plots and detailed explanations
+- ASSUMPTIONS.md: Comprehensive log of all key assumptions (missing-value strategies, classification thresholds, feature selection criteria)
+- model_*.md files: One per model family with hyperparameters, results, and comprehensive analysis
+- COMPARE.md: Side-by-side metrics, statistical tests, final model choice with course concept connections
+- ML_assignment.pdf: Final report (no page limit) compiled from markdown sources with proper ML lecture note references
+- Version-controlled repository with complete code and comprehensive documentation
+- config.py or equivalent: Random seed management and reproducibility settings
+- All deliverables must demonstrate understanding through detailed step-by-step explanations and result discussions
+
+## Evaluation Criteria (from rubric)
+- Technical implementation quality and code organization with detailed explanations
+- Experimental methodology rigor and statistical analysis with step-by-step reasoning
+- Model comparison and interpretation of results with comprehensive discussion
+- Documentation clarity and completeness with proper referencing to ML lecture notes
+- Report quality and adherence to academic standards (no page limit, focus on analysis depth)
+- Reproducibility and version control practices
+- Demonstration of understanding through detailed comments and result interpretation
+- Integration of course concepts from COMP4702 ML lecture notes throughout all work
+- Proper citation of all non-standard libraries and methodologies used
+</PRD> 
