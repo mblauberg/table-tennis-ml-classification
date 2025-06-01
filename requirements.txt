@@ -1,0 +1,29 @@
+# Core Python packages
+pandas==1.5.3
+numpy==1.24.3
+scipy==1.10.1
+
+# Machine Learning - Core libraries for course demonstration
+scikit-learn==1.2.2
+
+# Visualization - Essential for course analysis
+matplotlib==3.7.1
+seaborn==0.12.2
+
+# Class imbalance handling - Course concept
+imbalanced-learn==0.10.1
+
+# Statistical analysis - For proper evaluation
+statsmodels==0.14.0
+
+# Utilities
+tqdm==4.65.0
+
+# Development and testing
+pytest==7.3.1
+
+# Data processing utilities
+openpyxl==3.1.2  # For Excel file support if needed
+
+# Note: Focused on standard ML libraries to demonstrate understanding
+# with core tools rather than exotic packages

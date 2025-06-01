@@ -1,196 +1,187 @@
-<context>
 # Overview  
-COMP4702 Machine Learning Assignment - Build a fully-reproducible ML pipeline that predicts the swing-related target in assignTTSWING.csv. The project requires implementing three different model families (linear/baseline, tree-based ensemble, neural network), comprehensive evaluation, and a polished PDF report with version-controlled code and markdown documentation. All analysis must demonstrate understanding through detailed explanations, result discussions, and connections to COMP4702 course concepts from ML lecture notes.
+COMP4702 Machine Learning Assignment - Demonstrate understanding of course content through systematic application of ML concepts to tennis swing classification using assignTTSWING.csv. The primary goal is to show mastery of COMP4702 lecture material through **data-driven model selection** and theoretical justification. Model choices are based on data characteristics and course principles: Logistic Regression (baseline), Random Forest (ensemble learning), and SVM (margin maximization).
 
 # Core Features  
-## Data Processing Pipeline
-- Load and analyze assignTTSWING.csv dataset schema and basic statistics
-- Visual EDA with pair-plots, correlation heat-maps, class distribution analysis
-- Data cleaning: drop irrelevant/ID columns, handle missing values
-- Feature scaling/normalization and optional PCA implementation
-- Problem framing decision (classification vs regression)
+## Data Understanding and Preprocessing Pipeline
+- Load and analyze assignTTSWING.csv with systematic EDA using course principles
+- Justify preprocessing decisions based on data characteristics and course concepts
+- Feature scaling, selection, and engineering grounded in theoretical understanding
+- Class imbalance handling using course-taught techniques
+- Train/validation/test splits following course methodology
 
-## Three Model Implementation
-- Baseline Linear/Logistic model with hyperparameter grid search
-- Tree-based Ensemble (RF/XGBoost/LightGBM) with feature importance analysis
-- Neural Network (MLP or 1-D CNN) with learning curve tracking
-- Cross-validation and hyperparameter optimization for all models
+## Three-Model Comparative Analysis
+- **Baseline: Logistic Regression** - Linear classification foundation with L1/L2 regularization
+- **Advanced 1: Random Forest** - Ensemble learning with bagging and feature importance
+- **Advanced 2: Support Vector Machine** - Margin maximization with kernel methods
+- Each model justified by data characteristics and course theoretical framework
+- Deep analysis showing understanding of when and why to use each technique
 
-## Evaluation and Comparison Framework
-- Consolidated metrics table across all three models
-- ROC/PR curves or residual plots as appropriate
-- Statistical significance testing and cross-fold variance analysis
-- Feature importance and error analysis documentation
+## Course Understanding Demonstration
+- **Mathematical Foundations**: Explain underlying mathematics for each model
+- **Theoretical Justification**: Connect implementations to course concepts
+- **Hyperparameter Analysis**: Systematic tuning with course-based reasoning
+- **Evaluation Framework**: Proper metrics and validation using course principles
+- **Comparative Analysis**: Models compared using course evaluation methodology
 
 ## Documentation and Reporting System
-- SCOPE.md for data cleaning and EDA decisions with detailed explanations
-- Individual model_*.md files for each model family with comprehensive result analysis
-- COMPARE.md for side-by-side comparison and final model selection
-- Final ML_assignment.pdf report (no page limit) compiled from markdown sources
-- All documentation must reference ML lecture notes and demonstrate understanding through detailed discussions
+- SCOPE.md for data analysis decisions with course concept connections
+- Shared MODEL.md file demonstrating understanding of each technique, analysis and reasoning behind parameters or changes.
+- Comparison of models within the MODEL.md file for theoretically-grounded model comparison and selection
+- All documentation explicitly references course concepts and lecture notes
+- Final report demonstrating course mastery through practical application
 
 # Stakeholders
-- COMP4702 course instructors and TAs for grading against specific rubric criteria
-- Peer reviewers for code quality and reproducibility assessment
-</context>
-<PRD>
+- COMP4702 course instructors evaluating understanding of course content
+- Academic assessment focused on demonstrating theoretical knowledge through practical implementation
+
 # Technical Architecture  
 ## System Components
-- Python 3.11 environment with conda/venv
-- Core ML stack: pandas, numpy, scikit-learn, matplotlib/seaborn
-- Advanced libraries: imbalanced-learn, shap, torch/tensorflow (all non-standard libraries must be properly referenced)
-- Development tools: Jupyter notebooks, Git version control
-- Reproducibility: Fixed random seeds across all experiments (documented in config.py or requirements.txt)
-- Optional: DVC for data versioning, Git-LFS for large files
-- ML lecture notes as primary reference for theoretical concepts and course-specific methodologies
+- Python 3.11 environment with standard ML libraries
+- Core stack: pandas, numpy, scikit-learn, matplotlib/seaborn
+- **Python scripts only** (no Jupyter notebooks) for reproducible analysis
+- Git version control with structured documentation
+- Course lecture notes as primary theoretical reference
 
 ## Data Models
-- assignTTSWING.csv dataset with swing-related target variable
-- Preprocessed feature matrices with scaling/normalization
-- Model configurations and hyperparameters for three families
-- Evaluation metrics storage and comparison tables
-- Documentation artifacts in markdown format
+- assignTTSWING.csv: 97,355 samples × 51 features of tennis swing sensor data
+- Target: testmode (3 classes: 0=7.7%, 1=75.9%, 2=16.4%)
+- Preprocessed feature matrices with justified scaling and selection
+- Model configurations based on data characteristics and course principles
 
 ## Development Environment
-- Cursor IDE with built-in LLM agent for code and prose co-editing
-- Git repository with structured commit history
-- Organized directory structure: src/, notebooks/, figures/, docs/
-- Requirements.txt for reproducible environment setup
+- Structured Python modules demonstrating understanding through implementation
+- Comprehensive documentation connecting theory to practice
+- Clear separation between data processing, modeling, and evaluation
 
 # Development Roadmap  
-## Phase 0: Repository & Environment Setup
-- Initialize Git repository and configure remote
-- Add dataset files and assignment PDFs to repository
-- Create Python 3.11 environment with requirements.txt
-- Configure .gitignore and optional DVC setup
+## Phase A: Data Understanding & Course Application ✅ COMPLETED
+- Load assignTTSWING.csv and analyze using course EDA principles
+- Identify data characteristics that drive model selection decisions
+- Apply course preprocessing concepts with theoretical justification
+- Document all decisions with explicit course concept connections
 
-## Phase A: Data Understanding & Preprocessing
-- Load assignTTSWING.csv and analyze schema/basic statistics with detailed explanations
-- Conduct visual EDA: pair-plots, correlation analysis, distribution plots with interpretive commentary
-- Ensure all plots have clearly labelled axes, titles, legends, and comprehensive captions
-- Clean data: remove irrelevant columns, handle missing values with justified reasoning
-- Implement feature scaling/normalization pipeline with theoretical connections to course concepts
-- Assess and implement PCA if needed (≥90% variance in ≤20 components) with mathematical explanation
-- Finalize problem framing (classification vs regression) with reference to ML lecture notes
-- Document all decisions in SCOPE.md with comprehensive analysis and course concept connections
-- Create ASSUMPTIONS.md to log all key assumptions made during preprocessing and analysis
+## Phase B: Baseline Model Implementation (Logistic Regression)
+- **B1: Theoretical Foundation**
+  - Explain sigmoid function and maximum likelihood estimation
+  - Demonstrate understanding of linear decision boundaries
+  - Apply L1/L2 regularization with bias-variance tradeoff analysis
 
-## Phase B: Model Implementation (Parallel Development)
-- B1: Baseline Linear/Logistic model with scaling pipeline and grid search, explained with course theory
-- B2: Tree-based ensemble with cross-validation and feature importance, connected to lecture concepts
-- B3: Neural network with architecture design and learning curve tracking, related to course materials
-- Document each model in respective model_*.md files with detailed step-by-step explanations
-- All results must be presented with comprehensive comments and discussion demonstrating understanding
-- Minimal background theory - focus on relating implementations back to COMP4702 course concepts
+- **B2: Data-Driven Implementation**
+  - Justify logistic regression choice based on data characteristics
+  - Implement proper feature scaling and selection
+  - Handle class imbalance using course-taught techniques
+  - Hyperparameter tuning with theoretical understanding
 
-## Phase C: Evaluation & Comparison
-- Implement proper train/validation/test split strategy with explicit final test-set evaluation
-- Consolidate all model metrics into comparison table with detailed interpretation
-- Generate appropriate visualization (ROC/PR curves or residual plots) with comprehensive analysis
-- Perform statistical significance testing with explanation of methodology and results
-- Final model evaluation on held-out test set following Chapter 4 best practices from lecture notes
-- Write interpretive analysis in COMPARE.md connecting findings to course concepts
-- All outputs must include detailed comments demonstrating understanding of results
+## Phase C: Advanced Model 1 (Random Forest)
+- **C1: Ensemble Theory Application**
+  - Explain bootstrap aggregating and random subspaces
+  - Demonstrate understanding of bias-variance tradeoff in ensembles
+  - Apply feature importance concepts from course
 
-## Phase D: Report Generation
-- Draft abstract and introduction sections with clear problem statement
-- Insert key figures and tables from analysis with detailed captions and discussions
-- Ensure all rubric criteria are addressed with proper referencing to ML lecture notes
-- Conduct peer/self review for clarity, formatting, and demonstration of understanding
-- Focus on analysis quality over theoretical background, connecting all work to course concepts
+- **C2: Data-Driven Justification**
+  - Justify Random Forest for sensor data non-linearity
+  - Implement proper hyperparameter tuning (n_estimators, max_depth)
+  - Analyze out-of-bag error and overfitting prevention
+  - Compare with baseline using course evaluation framework
 
-## Phase E: Finalization
-- Convert markdown documentation to PDF format
-- Tag repository release (v1.0) and push final version
-- Prepare submission with PDF report and repository link
+## Phase D: Advanced Model 2 (Support Vector Machine)
+- **D1: Margin Theory Application**
+  - Explain maximum margin principle and support vectors
+  - Demonstrate understanding of kernel trick and feature mapping
+  - Apply regularization through C parameter with theoretical grounding
 
-# Logical Dependency Chain
-## Foundation Requirements
-- Repository and environment setup must be completed before any development
-- Data loading and EDA must precede all modeling work
-- Data preprocessing pipeline must be finalized before model training
-- Basic evaluation framework needed before advanced model comparison
+- **D2: Data-Driven Implementation**
+  - Justify SVM for high-dimensional sensor data
+  - Select appropriate kernel based on data characteristics
+  - Tune hyperparameters (C, gamma) with course understanding
+  - Analyze support vectors in sensor data context
 
-## Parallel Development Strategy
-- Three model families can be developed in parallel after data preprocessing
-- Each model requires independent documentation in model_*.md files
-- All models must be completed before comparative evaluation
-- Documentation should be maintained throughout, not deferred to end
+## Phase E: Comparative Analysis & Course Integration
+- Apply course evaluation methodology for model comparison
+- Demonstrate understanding of model strengths/weaknesses
+- Justify final model selection using course principles
+- Connect all findings back to course concepts and lecture notes
 
-## Quality Assurance Priority
-- Early data quality assessment to identify preprocessing needs
-- Baseline model implementation to establish minimum viable pipeline
-- Regular progress checkpoints against rubric criteria
-- Version control commits at each major milestone
+## Phase F: Documentation & Understanding Demonstration
+- Comprehensive documentation showing course mastery
+- Explicit connections between implementations and course theory
+- Clear demonstration of when and why to use each technique
+- Final report showcasing understanding through practical application
+
+# Model Selection Justification
+
+## Data Characteristics Driving Choices
+- **Tabular Sensor Data**: 46 numerical features from accelerometer/gyroscope
+- **High Dimensionality**: 51 features requiring careful selection and regularization
+- **Class Imbalance**: 7.7% minority class requiring special handling
+- **Mixed Scales**: Different sensor ranges requiring normalization
+- **Potential Non-linearity**: Sensor interactions likely complex
+
+## Course-Based Model Selection
+
+### Logistic Regression (Baseline)
+**Data Justification**: Linear relationships in sensor features, high dimensionality benefits from regularization, probabilistic output suitable for imbalanced classes
+**Course Concepts**: Linear classification, MLE, regularization, feature scaling
+
+### Random Forest (Advanced)
+**Data Justification**: Sensor interactions likely non-linear, robust to outliers, built-in feature importance, handles class imbalance
+**Course Concepts**: Ensemble learning, bagging, bias-variance tradeoff, overfitting prevention
+
+### Support Vector Machine (Advanced)
+**Data Justification**: Effective with high dimensions, kernel methods for non-linearity, margin maximization for clear separation
+**Course Concepts**: Margin maximization, kernel trick, Lagrange multipliers, regularization
 
 # Quality Standards and Expectations
 
-## Analysis and Documentation Requirements
-- **Step-by-step explanations**: Every key analytical step must be thoroughly explained with reasoning
-- **Result interpretation**: All outputs, figures, tables, and metrics must include detailed interpretive discussion
-- **Understanding demonstration**: Comments and analysis must clearly show comprehension of underlying concepts
-- **Course integration**: All methodologies and results must be explicitly connected to COMP4702 ML lecture notes
-- **Reference compliance**: Any libraries beyond standard ML stack (pandas, numpy, scikit-learn, matplotlib) must be properly cited
-- **Minimal theory**: Avoid extensive background theory sections; focus on practical application and course concept connections
-
-## Quality Benchmarks
-- **Example assignments available**: While example assignments are provided, they represent minimum acceptable quality
-- **Exceed example standards**: Aim for significantly higher quality analysis and documentation than provided examples
-- **No page limits**: Focus on depth and quality of analysis rather than brevity
-- **Comprehensive coverage**: Every decision, result, and finding must be documented with supporting rationale
+## Understanding Demonstration Requirements
+- **Theoretical Mastery**: Clear explanation of course concepts applied to each model
+- **Data-Driven Decisions**: All choices justified by data characteristics and course principles
+- **Implementation Quality**: Proper application of techniques showing understanding
+- **Course Integration**: Explicit connections to lecture material throughout
+- **Critical Analysis**: Understanding of model assumptions, limitations, and appropriate use cases
+- **Rubric compliance**: Regular review against ML_assignment_criteria.pdf
 
 ## Documentation Standards
-- **Detailed captions**: All figures and tables must have comprehensive captions explaining what is shown and why it matters
-- **Plot presentation**: Ensure all plots have clearly labelled axes, titles, legends, and descriptive captions
-- **Interpretive analysis**: Raw results are insufficient; must include analysis of what results mean and implications
-- **Course concept mapping**: Explicitly relate all work back to specific concepts from ML lecture notes
-- **Methodological justification**: Explain why specific approaches were chosen with reference to course materials
+- **Course Concept Mapping**: Every technique explicitly connected to course material
+- **Theoretical Justification**: Mathematical foundations explained with course references
+- **Data-Driven Reasoning**: Model choices justified by data characteristics
+- **Implementation Details**: Code demonstrating understanding of underlying concepts
+- **Comparative Analysis**: Models evaluated using course evaluation framework
 
-# Risks and Mitigations  
-## Technical Challenges
-- Dataset imbalance: Use stratified splits, class weights, or SMOTE techniques
-- Model overfitting: Implement cross-validation, learning curves, regularization
-- Computational resources: Optimize algorithms and use efficient implementations
-- Reproducibility: Use random seeds and comprehensive version control
+# Explicitly Avoided Based on Academic Focus
 
-## Academic Requirements
-- Rubric compliance: Regular review against ML_assignment_criteria.pdf
-- Documentation quality: Maintain detailed markdown files with comprehensive explanations throughout development
-- Reference compliance: All non-standard libraries and methodologies must be properly cited
-- Analysis depth: Every step of analysis must be explained with demonstration of understanding
-- Course integration: All work must connect back to COMP4702 ML lecture notes and course concepts
-- Result presentation: All outputs must include detailed comments and interpretive discussion
-- Assumptions documentation: Maintain comprehensive log of all key assumptions in ASSUMPTIONS.md
-- Reproducibility: Implement and document random seed management across all experiments
-- Final evaluation: Conduct proper test-set evaluation following Chapter 4 methodology from lecture notes
-- Time management: Phased development with clear milestone deadlines
-- Code quality: Consistent documentation and testing practices
+## Experimental Complexity
+- **Rationale**: Focus on understanding demonstration over experimental breadth
+- **Alternative**: Deep analysis of three well-chosen models with theoretical grounding
 
-## Implementation Risks
-- Markdown documentation bloat: Split docs by phase, store large outputs in /figures
-- Model comparison complexity: Standardize evaluation metrics across all models
-- Report generation: Plan markdown-to-PDF conversion process early
-- Final submission: Ensure all deliverables meet assignment requirements
+## Exotic Libraries
+- **Rationale**: Demonstrate understanding with standard tools rather than advanced libraries
+- **Alternative**: Comprehensive analysis using scikit-learn and core ML stack
 
-# Appendix  
-## Required Deliverables
-- SCOPE.md: Data cleaning and EDA decisions with key plots and detailed explanations
-- ASSUMPTIONS.md: Comprehensive log of all key assumptions (missing-value strategies, classification thresholds, feature selection criteria)
-- model_*.md files: One per model family with hyperparameters, results, and comprehensive analysis
-- COMPARE.md: Side-by-side metrics, statistical tests, final model choice with course concept connections
-- ML_assignment.pdf: Final report (no page limit) compiled from markdown sources with proper ML lecture note references
-- Version-controlled repository with complete code and comprehensive documentation
-- config.py or equivalent: Random seed management and reproducibility settings
-- All deliverables must demonstrate understanding through detailed step-by-step explanations and result discussions
+## Jupyter Notebooks
+- **Rationale**: Python scripts provide better reproducibility and structure
+- **Alternative**: Well-documented Python modules showing implementation understanding
 
-## Evaluation Criteria (from rubric)
-- Technical implementation quality and code organization with detailed explanations
-- Experimental methodology rigor and statistical analysis with step-by-step reasoning
-- Model comparison and interpretation of results with comprehensive discussion
-- Documentation clarity and completeness with proper referencing to ML lecture notes
-- Report quality and adherence to academic standards (no page limit, focus on analysis depth)
-- Reproducibility and version control practices
-- Demonstration of understanding through detailed comments and result interpretation
-- Integration of course concepts from COMP4702 ML lecture notes throughout all work
-- Proper citation of all non-standard libraries and methodologies used
-</PRD> 
+# Success Criteria
+
+## Academic Objectives
+- **Course Mastery**: Demonstrate understanding of classification, ensemble learning, and kernel methods
+- **Theoretical Application**: Successfully apply course concepts to real problem
+- **Data-Driven Analysis**: Justify all decisions using data characteristics and course principles
+- **Implementation Quality**: Proper application of techniques with theoretical understanding
+- **Documentation Excellence**: Clear demonstration of course concept mastery
+
+## Technical Deliverables
+- **Three Model Analysis**: Logistic Regression, Random Forest, SVM with full theoretical grounding
+- **Comparative Study**: Models compared using course evaluation methodology
+- **Course Integration**: All work explicitly connected to COMP4702 lecture material
+- **Understanding Demonstration**: Clear evidence of when and why to use each technique
+
+# Required Deliverables
+- SCOPE.md: Data analysis with course concept applications
+- MODELS.md: Logistic regression analysis with theoretical foundation
+- MODELS.md: Random Forest analysis with ensemble theory
+- MODELS.md: SVM analysis with margin theory and kernel methods
+- MODELS.md: Course-based model comparison and selection
+- Complete Python implementation demonstrating understanding
+- Final report showcasing course mastery through practical application 

@@ -1,0 +1,19 @@
+# Task ID: 12
+# Title: Implement Feature Engineering and Selection Documentation
+# Status: pending
+# Dependencies: 3
+# Priority: medium
+# Description: Document the feature engineering and selection process, grounded in theoretical understanding from the course.
+# Details:
+1. Explain feature scaling choices and their impact
+2. Document feature selection methods (e.g., SelectKBest) and their theoretical basis
+3. Analyze impact of feature engineering on model performance
+4. Connect feature engineering decisions to course concepts on dimensionality and feature importance
+5. Visualize feature importance across different models
+6. Add this documentation to SCOPE.md
+
+# Test Strategy:
+1. Verify completeness of feature engineering documentation
+2. Check that feature selection methods are clearly explained
+3. Validate clear connections to course materials on feature engineering
+4. Ensure visualizations of feature importance are informative and well-explained
