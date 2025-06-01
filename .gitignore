@@ -213,4 +213,7 @@ Thumbs.db
 # Keep generated figures in figures/
 # Keep documentation in docs/
 # Keep source code in src/
-# Keep task management files 
+# Keep task management files
+
+# Added by Claude Task Master
+tasks/ 

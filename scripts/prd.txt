@@ -1,32 +1,98 @@
 # Overview
 
-The COMP4702 Machine Learning Assignment project implements an end‐to‐end pipeline for classifying table‐tennis swings using wearable IMU statistics. This PRD has been updated to reflect that the codebase is already initialized, raw data is located at `data/raw/assignTTSWING.csv`, and the environment is managed via the Conda environment named `ml_assignment`. Rather than producing a PDF report, the focus is on generating a comprehensive `DOCUMENT.md` that details methodology, results, and ties every section back to COMP4702 lecture concepts.
+The COMP4702 Machine Learning Assignment project implements an end‐to‐end pipeline for classifying table‐tennis swings using wearable IMU statistics. This PRD has been updated to reflect that the codebase is already initialized, raw data is located at `data/raw/assignTTSWING.csv`, and the environment is managed via the Conda environment named `ml_assignment`. Rather than producing a PDF report, the focus is on generating a comprehensive `DOCUMENT.md` that details methodology, results, and follows a structured academic format.
+
+## Problem Definition: 3-Class Swing Classification
+
+**Target Variable**: `testmode` - A categorical variable representing table tennis swing types
+
+**Classification Task**: 3-class classification problem with the following target classes:
+- **Class 0**: "Air Swing" - Practice swings performed in the air without ball contact
+- **Class 1**: "Full Power" - Maximum intensity shots with full power stroke technique  
+- **Class 2**: "Stable" - Controlled, stable hitting with consistent technique
+
+**Practical Application**: This classification enables coaching feedback by automatically distinguishing between practice motions, power shots, and controlled techniques from wearable IMU sensor data.
+
+**Dataset Context**: Each row in `data/raw/assignTTSWING.csv` represents one table tennis swing motion with pre-computed statistical features from 6-axis IMU sensors (3-axis accelerometer + 3-axis gyroscope), labeled with the corresponding `testmode` value (0, 1, or 2).
+
+## Documentation Structure Overview
+
+The project follows a **comprehensive documentation strategy** centered around `DOCUMENT.md` as the primary deliverable:
+
+### Primary Documentation
+- **`DOCUMENT.md`**: Main academic-style report with complete methodology, results, and analysis
+  - **Structure**: Title & 150-word Abstract → 8 main sections → Comprehensive appendix
+  - **Format**: Professional academic document suitable for assignment submission
+  - **Content**: All figures, tables, code snippets, and analysis integrated in a single document
+  - **Location**: Project root (`/DOCUMENT.md`)
+
+### Supporting Documentation
+- **`README.md`**: Project setup, environment configuration, and quick-start guide
+- **`docs/ML_assignment_criteria.pdf`**: Detailed criteria for which the report/project is marked on
+- **`docs/ML_lecture_notes_full_rel2.pdf`**: The lecture notes in which this project should demonstrate
+- **`environment.yml`**: Complete Conda environment specification for reproducibility
+
+### Documentation Standards
+- **Academic Format**: Following standard ML paper structure (Abstract → Introduction → Methods → Results → Discussion → Conclusion)
+- **Reproducibility**: All code snippets, parameters, and configurations documented
+- **Visual Integration**: All plots and figures referenced and described in context
+- **Technical Depth**: Detailed methodology explanations with theoretical justification
+- **Results Focus**: Comprehensive performance analysis with statistical validation
 
 # Core Features
 
-* **Data Ingestion & Cleaning (ETL)**
+* **Data Ingestion & Cleaning (ETL) - Target: 3-Class Swing Classification**
 
-  * **Location**: `data/raw/assignTTSWING.csv`.
-  * **Unit Conversion**: Raw LSB → physical units (Week 3):
+  * **Location**: `data/raw/assignTTSWING.csv` containing table tennis swing data.
+  * **Target Variable**: `testmode` column with values 0 (air swing), 1 (full power), 2 (stable) - the core 3-class classification task.
+  * **Features**: Pre-computed IMU statistical features from 6-axis sensors (3-axis accelerometer + 3-axis gyroscope).
+  * **Unit Conversion**: Raw LSB → physical units:
 
     * Acceleration \[g] = raw × (2/32768)
     * Angular rate \[°/s] = raw × (250/32768)
-  * **Data Quality Rules** (Week 3 & 5):
+  * **Data Quality Rules**:
 
     * Drop rows with NaN after type casting.
     * Exclude records where ‖a‖ > 30 g.
-  * **Output**: Cleaned CSV at `data/processed/processed.csv`.
+    * Preserve target variable `testmode` integrity throughout cleaning process.
+  * **Output**: Cleaned CSV at `data/processed/processed.csv` maintaining 3-class target distribution.
+  * **Documentation**: Complete preprocessing details in `DOCUMENT.md` Section 2.3-2.4
 
-* **Group‐Aware Data Partitioning**
+* **Group‐Aware Data Partitioning for 3-Class Classification**
 
-  * **Protocol**: Group hold‐out split by `player_id` using scikit‐learn’s `GroupKFold` (Week 4).
-  * **Split Ratios**: 70 % train · 15 % val · 15 % test.
+  * **Protocol**: Group hold‐out split by `player_id` using scikit‐learn's `GroupKFold` to prevent player-specific overfitting.
+  * **Split Ratios**: 70 % train · 15 % val · 15 % test while maintaining class balance across swing types (air/power/stable).
+  * **Critical Constraint**: Ensure no `player_id` appears in multiple splits to avoid data leakage and realistic performance estimation.
+  * **Class Preservation**: Stratify splits to maintain representative distribution of all 3 swing types in each partition.
   * **Persistence**: JSON files in `splits/`: `train.json`, `val.json`, `test.json`.
+  * **Documentation**: Splitting strategy detailed in `DOCUMENT.md` Section 2.5
 
-* **Baseline Model: Random Forest**
+* **Baseline Model: Multinomial Logistic Regression for 3-Class Classification**
 
-  * **Library**: scikit‐learn’s `RandomForestClassifier`.
-  * **Hyperparameter Search**: Optuna with 5‐fold `GroupKFold` (Week 5 & 9).
+  * **Library**: scikit-learn's `LogisticRegression` configured for multinomial (softmax) classification.
+  * **Target**: Predicts `testmode` values (0=air swing, 1=full power, 2=stable) establishing the "linear ceiling" for comparison.
+  * **Model Specification**:
+
+    * `multi_class="multinomial"`: Single softmax model for 3 classes
+    * `penalty="l2"`: Ridge regularization to control overfitting
+    * `solver="saga"`: Handles L2, L1, and large sparse matrices
+    * `class_weight="balanced"`: Offsets class-frequency imbalance
+    * `max_iter=5000, tol=1e-4`: Guarantees convergence
+  * **Hyperparameter Search**: Grid over inverse regularization strength C ∈ {10⁻³, 10⁻², 10⁻¹, 1, 10, 100}
+  * **Cross-Validation**: 5-fold `GroupKFold` optimizing macro-F1 across all 3 swing types.
+  * **Outputs**:
+
+    * Trained 3-class linear model: `models/lr.pkl`.
+    * Validation curve (F1 vs log₁₀ C): `results/val_curve_lr.png`.
+    * Linear coefficient bar chart showing feature importance: `results/lr_coefficients.png`.
+  * **Key Benefits**: Fast training, fully interpretable coefficients, establishes linear performance baseline.
+  * **Documentation**: Linear baseline methodology in `DOCUMENT.md` Section 3.2
+
+* **Advanced Model 1: Random Forest for 3-Class Classification**
+
+  * **Library**: scikit‐learn's `RandomForestClassifier` configured for multi-class output.
+  * **Target**: Predicts `testmode` values (0, 1, 2) representing swing types using ensemble of decision trees.
+  * **Hyperparameter Search**: Optuna with 5‐fold `GroupKFold` optimizing for macro-F1 (equal weight to all 3 classes).
 
     * Search space:
 
@@ -36,13 +102,15 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
       * `min_samples_leaf`: 1–10
   * **Outputs**:
 
-    * Trained model serialized to `models/rf.pkl`.
-    * Feature importance (Gini) for interpretability (Week 9).
+    * Trained 3-class ensemble model serialized to `models/rf.pkl`.
+    * Feature importance (Gini) revealing which IMU features distinguish between swing types.
+  * **Documentation**: Ensemble methodology in `DOCUMENT.md` Section 3.3
 
-* **Advanced Model 1: LightGBM**
+* **Advanced Model 2: LightGBM for 3-Class Classification**
 
-  * **Library**: LightGBM `LGBMClassifier`.
-  * **Hyperparameter Search**: Optuna + 5‐fold `GroupKFold`.
+  * **Library**: LightGBM `LGBMClassifier` optimized for multi-class swing type prediction.
+  * **Target**: Predicts `testmode` values (0=air swing, 1=full power, 2=stable) with probability estimates for each class.
+  * **Hyperparameter Search**: Optuna + 5‐fold `GroupKFold` optimizing macro-F1 across all 3 swing types.
 
     * Search space:
 
@@ -51,55 +119,79 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
       * `max_depth`: {–1, 4–12}
       * `feature_fraction`: 0.6–1.0
       * `n_estimators`: 200–2000
-  * **Interpretability**:
+  * **Interpretability for Swing Classification**:
 
-    * SHAP summary plots (Week 10).
-    * Partial Dependence Plots for top features.
+    * SHAP summary plots revealing which IMU features distinguish between air swings, power shots, and stable hits.
+    * Partial Dependence Plots for top features showing their effect on each swing type probability.
   * **Outputs**:
 
-    * Model: `models/lgbm.pkl`.
-    * SHAP artifacts in `results/`.
+    * 3-class trained model: `models/lgbm.pkl`.
+    * SHAP artifacts in `results/` showing swing-type-specific feature importance.
+  * **Documentation**: Gradient boosting methodology and SHAP analysis in `DOCUMENT.md` Section 3.4 and 4.4
 
-* **Advanced Model 2: Sparse Gaussian Process**
+* **Advanced Model 3: Sparse Gaussian Process for 3-Class Classification with Uncertainty**
 
-  * **Library**: GPytorch (with PyTorch backend).
-  * **Preprocessing**: PCA reduced to 20 components (Week 6); `sklearn.decomposition.PCA`.
+  * **Library**: GPytorch (with PyTorch backend) configured for probabilistic multi-class classification.
+  * **Target**: Predicts `testmode` probabilities (0, 1, 2) with calibrated uncertainty estimates for each swing type.
+  * **Preprocessing**: PCA reduced to 20 components; `sklearn.decomposition.PCA`.
   * **Sparse Approximation**:
 
-    * RBF kernel, 1 000 inducing points.
-    * Optimize lengthscale ℓ & noise σ² by marginal likelihood (Week 11).
-  * **Uncertainty Evaluation**:
+    * RBF kernel optimized for distinguishing between swing motion patterns.
+    * 1 000 inducing points selected to capture swing type variability.
+    * Optimize lengthscale ℓ & noise σ² by marginal likelihood.
+  * **Uncertainty Evaluation for Coaching Applications**:
 
-    * Reliability diagrams & Expected Calibration Error (ECE).
+    * Reliability diagrams showing prediction confidence quality for each swing type.
+    * Expected Calibration Error (ECE) quantifying uncertainty reliability.
+    * Uncertainty estimates particularly valuable for identifying ambiguous swing patterns.
   * **Outputs**:
 
-    * Model: `models/gp.pkl`.
-    * Calibration plots in `results/`.
+    * Probabilistic 3-class model: `models/gp.pkl`.
+    * Calibration plots in `results/` showing uncertainty quality for each swing type.
+  * **Documentation**: Bayesian methodology and uncertainty analysis in `DOCUMENT.md` Section 3.5 and 4.5
 
 * **Evaluation & Metrics**
 
-  * **Primary Metric**: Macro‐F1 on test set (Week 4; handles class imbalance).
-  * **Secondary Metrics**: Accuracy, balanced accuracy, per‐class precision/recall (Week 4).
-  * **Uncertainty Metrics**: Brier score + ECE for GP (Week 11).
-  * **Statistical Confidence Intervals**: 1 000-sample bootstrap stratified by `player_id` for Macro‐F1 (Week 5).
+  * **Primary Metric**: Macro‐F1 on test set (optimal for 3-class classification; handles class imbalance by giving equal weight to each swing type).
+  * **Secondary Metrics**: 
+    - Overall accuracy across all 4 model types
+    - Balanced accuracy (average per-class recall)
+    - Per‐class precision/recall for each swing type (air swing, full power, stable)
+    - 4x3 confusion matrices showing misclassification patterns between swing types
+  * **Uncertainty Metrics**: Brier score + ECE for GP (particularly valuable for distinguishing ambiguous swing patterns).
+  * **Statistical Confidence Intervals**: 1 000-sample bootstrap stratified by `player_id` for Macro‐F1.
   * **Diagnostic Artifacts**:
 
-    * Confusion matrices (matplotlib) for each model.
-    * SHAP summaries (LightGBM).
-    * GP reliability curves.
+    * **4 model confusion matrices** (matplotlib) for each model showing swing type classification patterns.
+    * **Linear coefficients** (Logistic Regression) showing direct feature-to-prediction relationships.
+    * **Feature importance charts** (Random Forest) using Gini impurity rankings.
+    * SHAP summaries (LightGBM) revealing which IMU features distinguish between air swings, power shots, and stable hits.
+    * GP reliability curves with uncertainty estimates for each swing type prediction.
+  * **Documentation**: Complete evaluation methodology in `DOCUMENT.md` Section 4
 
-* **DOCUMENT.md Generation**
+* **DOCUMENT.md Generation and Structure**
 
-  * Every figure, table, and code snippet must be referenced and described in `DOCUMENT.md`.
-  * Structure mirrors COMP4702 lecture progression (Weeks 1–11) and assignment rubric sections (Analysis, Presentation, Techniques, Results, Discussion, Depth).
-  * No PDF compilation step—`DOCUMENT.md` is the single living document for narrative, results, and course connections.
+  * **Academic Format**: Professional ML paper structure with 150-word abstract
+  * **Content Integration**: Every figure, table, and code snippet referenced and described
+  * **Structure**: 8 main sections following standard academic format:
+    1. **Title & Abstract** (150 words)
+    2. **Introduction** (problem definition, methodology overview)  
+    3. **Dataset & Pre-processing** (5 subsections: description, EDA, cleaning, processing, partitioning)
+    4. **Modeling Methodology** (5 subsections: pipeline overview, LR baseline, RF, LightGBM, Sparse GP)
+    5. **Evaluation & Results** (6 subsections: metrics, performance table, confusion matrices, interpretability, uncertainty, diagnostics)
+    6. **Discussion** (model ranking, trade-offs, interpretability, limitations)
+    7. **Conclusion & Future Work** (takeaways and next steps)
+    8. **References** (dataset, tools, documentation)
+    9. **Appendix** (5 subsections: hyperparameters, plots, code, environment, assumptions)
+  * **No PDF compilation step**—`DOCUMENT.md` is the single deliverable document
+  * **Location**: Project root (`/DOCUMENT.md`)
 
 # User Experience
 
 * **Users & Personas**
 
-  * **ML Student**: Seeks a reproducible, theory‐grounded example of a COMP4702 pipeline.
-  * **Course Staff/Instructor**: Verifies that each step ties back to lecture material without relying on notebooks.
+  * **ML Student**: Seeks a reproducible, theory‐grounded example pipeline with comprehensive documentation.
+  * **Course Staff/Instructor**: Evaluates methodology, results presentation, and technical depth through `DOCUMENT.md`.
   * **Technical Reviewer**: Ensures code runs in the `ml_assignment` Conda environment with up-to-date packages.
 
 * **Key User Flows**
@@ -138,6 +230,13 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
      * Produces `splits/train.json`, `splits/val.json`, `splits/test.json`.
   4. **Model Training**
 
+     * **Logistic Regression**:
+
+       ```bash
+       python src/train_lr.py \
+         --splits splits/train.json splits/val.json \
+         --output models/lr.pkl
+       ```
      * **Random Forest**:
 
        ```bash
@@ -165,27 +264,19 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
 
        ```bash
        python src/evaluate.py \
-         --models models/rf.pkl models/lgbm.pkl models/gp.pkl \
+         --models models/lr.pkl models/rf.pkl models/lgbm.pkl models/gp.pkl \
          --splits splits/test.json \
          --output_dir results/
        ```
-     * Outputs confusion matrices, SHAP plots, GP calibration plots, and `results/metrics.csv`.
-  6. **DOCUMENT.md Authoring**
+     * Outputs confusion matrices, linear coefficients, feature importance, SHAP plots, GP calibration plots, and `results/metrics.csv`.
+  6. **DOCUMENT.md Review and Completion**
 
-     * Populate `DOCUMENT.md` sections by copying templates from `docs/sections/` and inserting results from `results/`.
-     * Ensure each subsection references the specific lecture (e.g., “(Week 9: Bagging & Boosting)”), includes relevant figures, and explains why each decision aligns with COMP4702 theory.
-     * Use the following structure:
-
-       1. **Introduction & Philosophy** (tie to rubric; outline objectives).
-       2. **Dataset Specification & Preprocessing** (detailed EDA & cleaning steps).
-       3. **Modeling Techniques**
-
-          * Random Forest (Week 9).
-          * LightGBM (Week 9–10).
-          * Sparse GP (Week 11).
-       4. **Evaluation & Results** (metrics, diagnostic plots, CI).
-       5. **Discussion & Depth** (bias/variance, interpretability, uncertainty).
-       6. **Appendices** (hyperparameter grids, code snippets, assumptions).
+     * **Primary Task**: Review and populate `DOCUMENT.md` with results from `results/` directory
+     * **Content Integration**: Insert generated figures, tables, and metrics into appropriate sections
+     * **Structure Verification**: Ensure all 8 main sections are complete and well-documented
+     * **Academic Standards**: Verify abstract is exactly 150 words and follows academic format
+     * **Reference Integration**: Ensure all figures and tables are properly referenced in text
+     * **Supporting Documentation**: Review `README.md`, preprocessing reports, and other docs for completeness
 
 * **UI/UX Considerations**
 
@@ -196,9 +287,25 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
     * `splits/` (JSON)
     * `models/` (.pkl files)
     * `results/` (plots + `metrics.csv`)
-    * `docs/sections/` (markdown templates)
-    * Top‐level `DOCUMENT.md` (final narrative)
+    * `DOCUMENT.md` (primary deliverable at project root)
+    * `docs/` (supporting documentation)
   * **Logging & Metadata**: Each script logs start/end timestamps, random seeds, and key parameter values to `logs/`.
+
+## Documentation Quality Standards
+
+### DOCUMENT.md Requirements
+- **Length**: Comprehensive but concise (typically 15-25 pages when printed)
+- **Abstract**: Exactly 150 words covering objective, dataset, methods, top performance, key insight
+- **Figures**: All plots properly sized, labeled, and referenced in text
+- **Code Snippets**: Key implementation details included in context
+- **Academic Tone**: Professional language suitable for peer review
+- **Reproducibility**: All parameters, seeds, and configurations documented
+
+### Supporting Documentation Standards  
+- **README.md**: Clear setup instructions, project overview, and quick-start guide
+- **Technical Reports**: Detailed EDA and preprocessing documentation
+- **Environment Specification**: Complete and tested `environment.yml`
+- **Code Documentation**: Clear docstrings and comments in all source files
 
 <PRD>  
 # Technical Architecture  
@@ -215,33 +322,34 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
   │   ├── val.json
   │   └── test.json
   ├── models/
+  │   ├── lr.pkl
   │   ├── rf.pkl
   │   ├── lgbm.pkl
   │   └── gp.pkl
   ├── results/
+  │   ├── confusion_matrix_lr.png
   │   ├── confusion_matrix_rf.png
+  │   ├── lr_coefficients.png
+  │   ├── val_curve_lr.png
   │   ├── shap_summary_lgbm.png
   │   ├── gp_calibration.png
   │   └── metrics.csv
   ├── src/
   │   ├── etl.py
   │   ├── split_data.py
+  │   ├── train_lr.py
   │   ├── train_rf.py
   │   ├── train_lgbm.py
   │   ├── train_gp.py
   │   ├── evaluate.py
   │   └── utils.py
-  ├── docs/
-  │   └── sections/
-  │       ├── 01_introduction.md
-  │       ├── 02_data_specification.md
-  │       ├── 03_models.md
-  │       ├── 04_evaluation.md
-  │       ├── 05_discussion.md
-  │       └── 06_appendix.md
-  ├── DOCUMENT.md
-  ├── environment.yml
-  └── README.md
+  ├── docs/  
+  │   ├── ML_assignment_criteria.pdf       # Document criteria 
+  │   ├── ML_lecture_notes_full_rel2.pdf   # Lecture notes with ML concepts to follow
+  ├── DOCUMENT.md                           # PRIMARY DELIVERABLE - Academic report
+  ├── README.md                             # Project setup and overview  
+  ├── environment.yml                       # Conda environment specification
+  └── logs/                                # Execution logs and metadata
   ```
 
 * **System Components**
@@ -259,15 +367,22 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
      * Splits into 70 % train · 15 % val · 15 % test; saves JSON indices.
   3. **Model Training Modules**
 
+     * **`train_lr.py`**:
+
+       * Loads train/val splits.
+       * Applies `StandardScaler` to numeric features; saves scaler for reuse.
+       * Uses grid search with 5-fold `GroupKFold` to tune Logistic Regression regularization.
+       * Trains final LR with best C parameter; serializes to `models/lr.pkl`.
+       * Generates validation curve and coefficient importance plots.
      * **`train_rf.py`**:
 
        * Loads train/val splits.
-       * Applies `StandardScaler` to numeric features (Week 6).
+       * Applies `StandardScaler` to numeric features (reuses scaler from LR).
        * Uses Optuna + 5-fold `GroupKFold` to tune Random Forest.
        * Trains final RF with best hyperparameters; serializes to `models/rf.pkl`.
      * **`train_lgbm.py`**:
 
-       * Loads train/val splits; reuses scaler from RF.
+       * Loads train/val splits; reuses scaler from previous models.
        * Optuna + 5-fold `GroupKFold` to tune LightGBM (early stopping every 50 rounds).
        * Computes SHAP values for interpretability; saves SHAP summary.
        * Serializes model to `models/lgbm.pkl`.
@@ -279,23 +394,23 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
        * Saves trained GP to `models/gp.pkl`.
   4. **Evaluation Module (`evaluate.py`)**
 
-     * Loads `models/*.pkl` and `splits/test.json`.
+     * Loads all models: `models/lr.pkl`, `models/rf.pkl`, `models/lgbm.pkl`, `models/gp.pkl` and `splits/test.json`.
      * Applies identical preprocessing pipelines (scaler, PCA) to test set.
      * For each model:
 
        * Computes predictions, class probabilities.
        * Calculates Macro-F1, balanced accuracy, per-class precision/recall.
        * Generates confusion matrix plot (matplotlib).
-       * For LightGBM: plots SHAP summary; for GP: reliability diagram & ECE.
+       * For LR: plots coefficient importance; for RF: plots Gini importance; for LightGBM: plots SHAP summary; for GP: reliability diagram & ECE.
      * Compiles metrics into `results/metrics.csv`.
 
 * **Data Models & Storage**
 
-  * **Raw Data**: `assignTTSWING.csv` with columns `stroke_id`, `player_id`, six raw IMU axes, precomputed stats, `testmode`.
-  * **Processed Data**: Numeric columns converted to physical units; no NaNs; outliers removed.
-  * **JSON Splits**: Lists of integer indices for train/val/test.
+  * **Raw Data**: `assignTTSWING.csv` with columns `stroke_id`, `player_id`, six raw IMU axes, precomputed stats, and **target variable `testmode`** (0="air swing", 1="full power", 2="stable").
+  * **Processed Data**: Numeric columns converted to physical units; no NaNs; outliers removed; target variable preserved.
+  * **JSON Splits**: Lists of integer indices for train/val/test maintaining class distribution.
   * **Pickles**: Serialized Python objects containing fitted models, scalers, and PCA pipeline.
-  * **Results Directory**: Contains PNG artifacts and final metrics CSV.
+  * **Results Directory**: Contains PNG artifacts and final metrics CSV with 4-model 3-class performance evaluation.
 
 * **Dependencies & Environment**
 
@@ -304,7 +419,7 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
   * **Primary Packages**:
 
     * pandas, numpy (data handling)
-    * scikit-learn (preprocessing, `GroupKFold`, PCA, RF)
+    * scikit-learn (preprocessing, `GroupKFold`, PCA, LogisticRegression, RandomForest)
     * lightgbm (LGBMClassifier)
     * torch, gpytorch (Sparse GP)
     * shap (SHAP plots)
@@ -324,9 +439,10 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
 
 * **EDA & Feature Examination**
 
-  * Generate univariate/bivariate distributions for raw IMU stats.
-  * Class‐balance analysis of `testmode` (0=“air swing”, 1=“full power”, 2=“stable”) (Week 3).
-  * Correlation heatmap to identify highly correlated features (Week 6: multicollinearity).
+  * Generate univariate/bivariate distributions for raw IMU stats by swing type.
+  * **Critical: Class‐balance analysis of `testmode`** (0="air swing", 1="full power", 2="stable") to understand target distribution.
+  * Correlation heatmap to identify highly correlated features and their relationship to swing types.
+  * **Target Variable Analysis**: Examine distribution of swing types across players and sessions.
 
 * **Implement ETL (`etl.py`)**
 
@@ -341,31 +457,50 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
   * Random seed `SEED = 123` for reproducibility.
   * Save JSON: `train.json`, `val.json`, `test.json`.
 
-#### Phase 2 · Baseline Model Implementation (Random Forest)
+#### Phase 2 · Baseline Model Implementation (Logistic Regression)
 
 * **Preprocessing**
 
-  * Fit `StandardScaler` on train set; persist to `models/scaler.pkl` (Week 6).
+  * Fit `StandardScaler` on train set; persist to `models/scaler.pkl`.
   * One-hot encode any categorical metadata (if present) via `pd.get_dummies(drop_first=True)`.
+* **Training & Tuning (`train_lr.py`)**
+
+  * Define grid search over regularization parameter C ∈ {10⁻³, 10⁻², 10⁻¹, 1, 10, 100}.
+  * Employ 5-fold `GroupKFold` with macro-F1 optimization.
+  * Configure: `multi_class='multinomial'`, `penalty='l2'`, `solver='saga'`, `class_weight='balanced'`.
+  * Log best parameters; train final LR on full train set.
+  * Save: `models/lr.pkl`.
+* **Diagnostics**
+
+  * Generate validation curve (F1 vs log₁₀ C); save to `results/val_curve_lr.png`.
+  * Create confusion matrix on validation set; save to `results/confusion_matrix_lr.png`.
+  * Plot coefficient importance bar chart; save to `results/lr_coefficients.png`.
+  * Establish linear performance baseline for comparison with ensemble methods.
+
+#### Phase 3 · Advanced Model 1 Implementation (Random Forest)
+
+* **Preprocessing**
+
+  * Reuse `StandardScaler` and encoding from Phase 2.
 * **Training & Tuning (`train_rf.py`)**
 
   * Define Optuna search:
 
     * `n_estimators`, `max_depth`, `max_features`, `min_samples_leaf`.
-  * Employ 5-fold `GroupKFold` (Week 5 & 9).
+  * Employ 5-fold `GroupKFold`.
   * Log best parameters; train final RF on full train set.
   * Save: `models/rf.pkl`.
 * **Diagnostics**
 
-  * Generate OOB error curve; produce validation curves for key hyperparameters (Week 9).
+  * Generate OOB error curve; produce validation curves for key hyperparameters.
   * Create confusion matrix on validation set; save to `results/confusion_matrix_rf.png`.
   * Extract Gini importances; include top 10 features in `DOCUMENT.md`.
 
-#### Phase 3 · Advanced Model 1 (LightGBM)
+#### Phase 4 · Advanced Model 2 Implementation (LightGBM)
 
 * **Preprocessing**
 
-  * Reuse `StandardScaler` and encoding from Phase 2.
+  * Reuse `StandardScaler` and encoding from previous phases.
 * **Training & Tuning (`train_lgbm.py`)**
 
   * Define Optuna search: `num_leaves`, `learning_rate`, `max_depth`, `feature_fraction`, `n_estimators`.
@@ -376,37 +511,37 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
   * Compute SHAP values on validation set; save summary plot to `results/shap_summary_lgbm.png`.
   * Partial Dependence Plots on top 5 features.
 
-#### Phase 4 · Advanced Model 2 (Sparse Gaussian Process)
+#### Phase 5 · Advanced Model 3 Implementation (Sparse Gaussian Process)
 
 * **Dimensionality Reduction**
 
-  * Fit PCA (n\_components = 20) on train set; save `models/pca.pkl` (Week 6).
+  * Fit PCA (n\_components = 20) on train set; save `models/pca.pkl`.
 * **Training & Tuning (`train_gp.py`)**
 
   * Preprocess train/val data: apply `scaler.pkl`, then `pca.pkl`.
   * Build GPytorch model with RBF kernel; use k-means to select 1 000 inducing points.
-  * Optimize ℓ & σ² via marginal likelihood (Week 11).
+  * Optimize ℓ & σ² via marginal likelihood.
   * Save GP model: `models/gp.pkl`.
 * **Calibration & Uncertainty**
 
   * Generate reliability diagram; compute ECE; save `results/gp_calibration.png`.
 
-#### Phase 5 · Evaluation & Artifact Collection
+#### Phase 6 · Evaluation & Artifact Collection
 
 * **Evaluation Script (`evaluate.py`)**
 
-  * Input: `models/rf.pkl`, `models/lgbm.pkl`, `models/gp.pkl` + `splits/test.json`.
+  * Input: All four models `models/lr.pkl`, `models/rf.pkl`, `models/lgbm.pkl`, `models/gp.pkl` + `splits/test.json`.
   * Preprocess test set: apply `scaler.pkl` → `pca.pkl` (for GP).
   * For each model:
 
     * Predict test labels; compute Macro-F1, balanced accuracy, per-class precision/recall.
     * Save confusion matrix to `results/`.
-    * GP: plot reliability diagram; compute ECE.
+    * LR: plot coefficient importance; RF: plot Gini importance; LightGBM: plot SHAP summary; GP: plot reliability diagram & compute ECE.
   * Collate all metrics into `results/metrics.csv`.
 
 * **DOCUMENT.md Assembly**
 
-  * Use markdown templates from `docs/sections/`.
+  * Use markdown structure with 4-model comparison.
   * Sections must include:
 
     1. **Introduction & Project Philosophy**
@@ -414,30 +549,32 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
        * State primary goals and course connections.
     2. **Dataset Specification**
 
-       * Describe `assignTTSWING.csv`: size, features, target, unit conversions (Week 3).
-       * Data quality rules & filtering rationale (Week 5).
-       * Splitting protocol (Week 4).
+       * Describe `assignTTSWING.csv`: size, features, target, unit conversions.
+       * Data quality rules & filtering rationale.
+       * Splitting protocol.
     3. **Methodology & Preprocessing**
 
        * Detail ETL steps with code snippets (`etl.py`).
        * Explain `GroupKFold` split logic (`split_data.py`), seed usage.
     4. **Model Implementation & Tuning**
 
-       * **Random Forest**: hyperparameter grid, OOB error, feature importances (Week 9).
-       * **LightGBM**: boosting theory, Optuna workflow, SHAP (Week 9–10).
-       * **Sparse GP**: Bayesian GP fundamentals, PCA justification, inducing points, calibration (Week 11).
+       * **Logistic Regression**: linear baseline, regularization grid, coefficient interpretation.
+       * **Random Forest**: hyperparameter grid, OOB error, feature importances.
+       * **LightGBM**: boosting theory, Optuna workflow, SHAP.
+       * **Sparse GP**: Bayesian GP fundamentals, PCA justification, inducing points, calibration.
     5. **Evaluation & Results**
 
-       * Present tables/plots: `metrics.csv`, confusion matrices, SHAP summaries, GP calibration.
-       * Include bootstrap CI results for Macro-F1 (Week 5).
+       * Present tables/plots: `metrics.csv`, confusion matrices, coefficient plots, SHAP summaries, GP calibration.
+       * Include bootstrap CI results for Macro-F1.
     6. **Discussion & Depth**
 
-       * Analyze bias–variance tradeoff for each model (Week 5).
-       * Interpretability comparison (SHAP vs. Gini vs. GP confidence).
+       * Analyze bias–variance tradeoff for each model.
+       * Interpretability comparison (coefficients vs. Gini vs. SHAP vs. GP confidence).
        * Practical considerations: compute time, scalability.
+       * Model complexity progression from linear to Bayesian.
     7. **Appendix**
 
-       * Hyperparameter search spaces (full Optuna configurations).
+       * Hyperparameter search spaces (full grid/Optuna configurations).
        * Exact Conda `environment.yml`.
        * Assumptions (e.g., Gaussian sensor noise σ\_IMU = 0.05 g).
        * References: lecture notes and Dryad DOI.
@@ -447,21 +584,42 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
 1. **ETL (`etl.py`) → Splitting (`split_data.py`)**
 
    * Must produce a clean `processed.csv` before generating consistent JSON splits.
-2. **Splitting → Baseline Model (`train_rf.py`)**
+2. **Splitting → Baseline Model (`train_lr.py`)**
 
    * Requires `train.json` & `val.json` and the fitted `StandardScaler`.
 3. **Baseline Model Analysis → LightGBM (`train_lgbm.py`)**
 
-   * RF’s insights (e.g., top features, distribution) can inform LightGBM’s hyperparameter ranges.
+   * LR's insights (e.g., top features, distribution) can inform LightGBM's hyperparameter ranges.
 4. **LightGBM Artifacts → Sparse GP (`train_gp.py`)**
 
-   * Use LightGBM’s feature importance to decide which features to retain in PCA (if needed).
+   * Use LightGBM's feature importance to decide which features to retain in PCA (if needed).
 5. **Trained Models → Evaluation (`evaluate.py`)**
 
    * Needs all three `.pkl` files and `test.json` to compute final metrics.
-6. **Evaluation Artifacts → DOCUMENT.md**
+6. **Evaluation Artifacts → DOCUMENT.md Completion**
 
-   * Figures/metrics generated drive the narrative in each DOCUMENT.md section.
+   * Figures/metrics generated from `results/` populate all sections of `DOCUMENT.md`
+   * Performance tables, confusion matrices, SHAP plots integrated into academic narrative
+   * Statistical results and confidence intervals documented with proper interpretation
+
+# Documentation Workflow
+
+## Pre-Implementation Documentation Review
+1. **Review DOCUMENT.md Structure**: Ensure all 8 sections are properly outlined
+2. **Verify Documentation Standards**: Check academic format, abstract word count, reference style
+3. **Prepare Figure Placeholders**: Identify where results will be integrated
+
+## During Implementation
+1. **Log Key Decisions**: Document any deviations from planned methodology  
+2. **Save Intermediate Results**: Ensure all plots and metrics are generated in `results/`
+3. **Update Code Comments**: Maintain clear documentation for key functions
+
+## Post-Implementation Documentation
+1. **Populate DOCUMENT.md**: Insert all results, figures, and performance metrics
+2. **Complete Analysis Sections**: Write interpretation and discussion of results
+3. **Verify Academic Standards**: Ensure professional tone and proper structure
+4. **Cross-Reference Validation**: Confirm all figures/tables are referenced in text
+5. **Final Review**: Complete readthrough for clarity, accuracy, and completeness
 
 # Risks and Mitigations
 
@@ -472,7 +630,7 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
 
 * **Risk: Environment Inconsistencies**
 
-  * *Issue*: Using “latest versions” could break reproducibility if future changes introduce incompatibilities.
+  * *Issue*: Using "latest versions" could break reproducibility if future changes introduce incompatibilities.
   * *Mitigation*: Provide an explicit `environment.yml` with major version constraints (e.g., `scikit-learn >=1.2, <2.0`) and instruct users to recreate `ml_assignment` via:
 
     ```bash
@@ -499,8 +657,21 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
 
 * **Risk: Incomplete Documentation**
 
-  * *Issue*: Failing to link methods back to lecture content may lose marks.
-  * *Mitigation*: Enforce that each subsection in `DOCUMENT.md` includes explicit citations, e.g., “(Week 9: Ensemble Theory)” and a brief summary of how it applies.
+  * *Issue*: `DOCUMENT.md` may lack technical depth or proper academic format.
+  * *Mitigation*: 
+    * Follow the structured 8-section format with detailed subsections
+    * Ensure 150-word abstract meets all requirements (objective, dataset, methods, results, insights)
+    * Include comprehensive appendix with hyperparameters, code snippets, and assumptions
+    * Maintain professional academic tone throughout
+
+* **Risk: Documentation-Code Mismatch**
+
+  * *Issue*: Results in `DOCUMENT.md` may not match actual implementation or generated artifacts.
+  * *Mitigation*:
+    * Systematically populate `DOCUMENT.md` after each implementation phase
+    * Verify all figure references point to actual files in `results/`
+    * Cross-check performance metrics between code output and documented results
+    * Include version control for both code and documentation changes
 
 * **Risk: JSON Split File Corruption**
 
@@ -515,6 +686,22 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
 * **Dataset Reference**
 
   * Dryad DOI 10.5061/dryad.0zpc8677f → local path `data/raw/assignTTSWING.csv`.
+
+* **Primary Documentation Links**
+  
+  * **Main Report**: `DOCUMENT.md` (academic-style comprehensive report)
+  * **Setup Guide**: `README.md` (environment and execution instructions)  
+  * **EDA Report**: `docs/preprocessing_report.md` (detailed data analysis)
+  * **Project Scope**: `docs/SCOPE.md` (requirements and objectives)
+  * **Technical Assumptions**: `docs/ASSUMPTIONS.md` (modeling decisions and constraints)
+
+* **Documentation Standards Reference**
+
+  * **Academic Format**: Standard ML paper structure (Abstract → Introduction → Methods → Results → Discussion → Conclusion → References → Appendix)
+  * **Word Count**: Abstract exactly 150 words
+  * **Visual Standards**: All figures properly labeled, sized, and referenced in text
+  * **Code Integration**: Key implementation details included as snippets
+  * **Reproducibility**: All parameters, seeds, configurations documented
 
 * **Conda Environment** (`environment.yml`)
 
@@ -545,17 +732,7 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
 
   1. Sensor noise \~ N(0, 0.05² g).
   2. No systematic domain shift across `player_id`.
-  3. Kernel hyperparameters for GP initialized via median heuristic (Week 11).
-
-* **Relevant Lecture Links**
-
-  * **Week 3**: “Feature Engineering for Time Series” (unit conversion & data cleaning).
-  * **Week 4**: “Group Cross‐Validation” (GroupKFold; imbalanced metrics).
-  * **Week 5**: “Bias–Variance & Bootstrap CI” (hyperparameter tuning & statistical confidence).
-  * **Week 6**: “Feature Scaling & PCA” (StandardScaler; dimensionality reduction).
-  * **Week 9**: “Ensemble Methods” (bagging, boosting; Random Forest & LightGBM basics).
-  * **Week 10**: “Interpretability” (SHAP, Partial Dependence).
-  * **Week 11**: “Gaussian Processes” (kernels, sparse approximations, calibration).
+  3. Kernel hyperparameters for GP initialized via median heuristic.
 
 * **How to Reproduce**
 
@@ -572,12 +749,13 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
      ```bash
      python src/etl.py --input data/raw/assignTTSWING.csv --output data/processed/processed.csv
      python src/split_data.py --input data/processed/processed.csv --output_dir splits/
+     python src/train_lr.py --splits splits/train.json splits/val.json --output models/lr.pkl
      python src/train_rf.py --splits splits/train.json splits/val.json --output models/rf.pkl
      python src/train_lgbm.py --splits splits/train.json splits/val.json --output models/lgbm.pkl
      python src/train_gp.py --splits splits/train.json splits/val.json --output models/gp.pkl
-     python src/evaluate.py --models models/rf.pkl models/lgbm.pkl models/gp.pkl \
+     python src/evaluate.py --models models/lr.pkl models/rf.pkl models/lgbm.pkl models/gp.pkl \
        --splits splits/test.json --output_dir results/
      ```
-  5. Populate `DOCUMENT.md` using templates under `docs/sections/` and artifact files in `results/`.
+  5. **Complete Documentation**: Populate `DOCUMENT.md` with results from `results/` directory, ensuring all sections are complete and follow academic standards.
 
 </PRD>

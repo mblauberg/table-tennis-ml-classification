@@ -1,0 +1,24 @@
+name: ml_assignment
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+dependencies:
+  - python>=3.10
+  - pandas
+  - numpy
+  - scikit-learn
+  - lightgbm
+  - pytorch
+  - gpytorch
+  - matplotlib
+  - seaborn
+  - joblib
+  - optuna
+  - shap
+  - jupyter
+  - ipykernel
+  - pip
+  - pip:
+    - torch-scatter
+    - torch-sparse 
