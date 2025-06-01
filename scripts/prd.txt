@@ -1,6 +1,6 @@
 # Overview
 
-The COMP4702 Machine Learning Assignment project implements an end‐to‐end pipeline for classifying table‐tennis swings using wearable IMU statistics. This PRD has been updated to reflect that the codebase is already initialized, raw data is located at `data/raw/assignTTSWING.csv`, and the environment is managed via the Conda environment named `ml_assignment`. Rather than producing a PDF report, the focus is on generating a comprehensive `DOCUMENT.md` that details methodology, results, and follows a structured academic format.
+The COMP4702 Machine Learning Assignment project implements an end‐to‐end pipeline for classifying table‐tennis swings using wearable IMU statistics. This PRD has been updated to reflect that the codebase is already initialized, raw data is located at `data/raw/assignTTSWING.csv`, and the environment is managed via the Conda environment named `ml_assignment`. The project implements an enhanced ETL pipeline with signal processing techniques and group-aware data splitting to prevent data leakage. Rather than producing a PDF report, the focus is on generating a comprehensive `DOCUMENT.md` that details methodology, results, and follows a structured academic format.
 
 ## Problem Definition: 3-Class Swing Classification
 
@@ -14,6 +14,61 @@ The COMP4702 Machine Learning Assignment project implements an end‐to‐end pi
 **Practical Application**: This classification enables coaching feedback by automatically distinguishing between practice motions, power shots, and controlled techniques from wearable IMU sensor data.
 
 **Dataset Context**: Each row in `data/raw/assignTTSWING.csv` represents one table tennis swing motion with pre-computed statistical features from 6-axis IMU sensors (3-axis accelerometer + 3-axis gyroscope), labeled with the corresponding `testmode` value (0, 1, or 2).
+
+## Enhanced Data Processing Strategy
+
+### Signal Processing & Data Quality Pipeline
+
+The project implements a **lecture-aligned cleaning pipeline** that addresses real-world IMU data challenges:
+
+**1. Unit Conversion (Physics-Based)**
+- **Rationale**: Raw IMU data is in LSB (Least Significant Bit) format requiring conversion to physical units
+- **Implementation**: 
+  - Acceleration: LSB × (2g / 32768) for ±2g range sensors
+  - Angular rate: LSB × (250°/s / 32768) for ±250°/s range sensors
+- **Benefit**: Enables physically meaningful outlier detection and cross-sensor comparison
+
+**2. Signal Smoothing (Week 3 Concepts)**
+- **Median Despike**: 3-point rolling median to remove single-frame sensor spikes
+- **Butterworth Low-Pass Filter**: 5th-order filter with 20Hz cutoff (fs=200Hz sampling)
+- **Rationale**: IMU sensors are susceptible to electromagnetic interference and mechanical vibrations
+- **Implementation**: Zero-phase `filtfilt` preserves signal timing while removing high-frequency noise
+
+**3. Advanced Missing Data Handling**
+- **Linear Interpolation**: Applied to isolated numeric gaps before NaN removal
+- **Categorical Cleaning**: Remove rows with '???' placeholder values in demographic categories
+- **Rationale**: Preserves maximum data while ensuring quality for ML pipelines
+
+**4. Physically-Motivated Outlier Removal**
+- **Threshold**: ‖acceleration‖ > 16g (beyond sensor specification)
+- **Rationale**: Table tennis motions rarely exceed 8-10g; values >16g indicate sensor malfunction
+- **Implementation**: Euclidean norm of acceleration components after unit conversion
+
+**5. Feature Engineering for ML Compatibility**
+- **One-Hot Encoding**: Categorical demographics (age, playYears, height, weight) 
+- **Column Pruning**: Remove temporal metadata (date, fileindex, teststage, count)
+- **Standardization**: Prepare features for scikit-learn Pipeline compatibility
+
+### Group-Aware Data Partitioning (Week 5 Best Practices)
+
+**Two-Round StratifiedGroupKFold Implementation**:
+
+**Round 1**: 5-fold SGKF → Extract 1 fold as test set (20%), remaining 4 folds as temp set (80%)
+**Round 2**: 4-fold SGKF on temp set → Extract 1 fold as validation (20% of temp = 16% overall), remainder as training (64% overall)
+
+**Final Ratios**: ~64% train / 16% validation / 20% test
+
+**Critical Design Decisions**:
+- **Group Column**: `player_id` ensures no player appears in multiple splits
+- **Stratification**: Maintains class balance (`testmode` distribution) across all splits
+- **Deterministic**: Fixed random seed (123) for reproducibility
+- **Leakage Prevention**: Player-specific swing patterns never leak between train/validation/test
+
+**Rationale**: Standard train/test splits fail with grouped data because:
+1. Players have consistent biomechanical patterns
+2. Random splitting allows the same player in train and test
+3. This leads to overly optimistic performance estimates
+4. GroupKFold prevents this by ensuring complete player separation
 
 ## Documentation Structure Overview
 
@@ -41,31 +96,69 @@ The project follows a **comprehensive documentation strategy** centered around `
 
 # Core Features
 
-* **Data Ingestion & Cleaning (ETL) - Target: 3-Class Swing Classification**
+* **Enhanced ETL Pipeline - Signal Processing + Data Quality**
 
-  * **Location**: `data/raw/assignTTSWING.csv` containing table tennis swing data.
-  * **Target Variable**: `testmode` column with values 0 (air swing), 1 (full power), 2 (stable) - the core 3-class classification task.
-  * **Features**: Pre-computed IMU statistical features from 6-axis sensors (3-axis accelerometer + 3-axis gyroscope).
-  * **Unit Conversion**: Raw LSB → physical units:
+  * **Location**: `src/etl.py` - Production-ready ETL module with comprehensive logging
+  * **Input**: `data/raw/assignTTSWING.csv` containing raw table tennis swing data
+  * **Target Preservation**: `testmode` column integrity maintained throughout all transformations
+  
+  * **Signal Processing Pipeline (Week 3 Concepts)**:
+    * **Unit Conversion**: Raw LSB → physical units using sensor specifications
+      - Acceleration [g] = raw × (2/32768) for ±2g range
+      - Angular rate [°/s] = raw × (250/32768) for ±250°/s range
+    * **Median Despike**: 3-point rolling median removes single-frame sensor artifacts
+    * **Butterworth LPF**: 5th-order, 20Hz cutoff, zero-phase filtering for noise reduction
+    * **Rationale**: IMU sensors require signal conditioning for reliable feature extraction
+  
+  * **Advanced Data Quality Rules**:
+    * **Missing Data**: Linear interpolation for isolated gaps, then drop remaining NaNs
+    * **Categorical Cleaning**: Remove rows with '???' placeholder values in demographics
+    * **Physical Outliers**: Drop samples where ‖acceleration‖ > 16g (sensor malfunction threshold)
+    * **Feature Engineering**: One-hot encode categorical demographics (age/playYears/height/weight)
+    * **Column Pruning**: Remove temporal metadata (date, fileindex, teststage, count)
+  
+  * **Quality Assurance**:
+    * **Deduplication**: Remove exact duplicate rows early in pipeline
+    * **Target Validation**: Verify `testmode` integrity and class distribution
+    * **Comprehensive Logging**: Detailed logs of every transformation step
+    * **Output Validation**: Final dataset ready for GroupStratifiedKFold + scikit-learn
+  
+  * **Output**: `data/processed/processed_dataset.csv` - Clean, feature-engineered dataset
+  * **Documentation**: Complete preprocessing methodology in `DOCUMENT.md` Section 2.3-2.4
 
-    * Acceleration \[g] = raw × (2/32768)
-    * Angular rate \[°/s] = raw × (250/32768)
-  * **Data Quality Rules**:
+* **Group‐Aware Data Partitioning (Week 5 Best Practices)**
 
-    * Drop rows with NaN after type casting.
-    * Exclude records where ‖a‖ > 30 g.
-    * Preserve target variable `testmode` integrity throughout cleaning process.
-  * **Output**: Cleaned CSV at `data/processed/processed.csv` maintaining 3-class target distribution.
-  * **Documentation**: Complete preprocessing details in `DOCUMENT.md` Section 2.3-2.4
-
-* **Group‐Aware Data Partitioning for 3-Class Classification**
-
-  * **Protocol**: Group hold‐out split by `player_id` using scikit‐learn's `GroupKFold` to prevent player-specific overfitting.
-  * **Split Ratios**: 70 % train · 15 % val · 15 % test while maintaining class balance across swing types (air/power/stable).
-  * **Critical Constraint**: Ensure no `player_id` appears in multiple splits to avoid data leakage and realistic performance estimation.
-  * **Class Preservation**: Stratify splits to maintain representative distribution of all 3 swing types in each partition.
-  * **Persistence**: JSON files in `splits/`: `train.json`, `val.json`, `test.json`.
-  * **Documentation**: Splitting strategy detailed in `DOCUMENT.md` Section 2.5
+  * **Implementation**: `src/split_data.py` - Two-round StratifiedGroupKFold approach
+  * **Fundamental Principle**: Prevent data leakage by ensuring no `player_id` appears in multiple splits
+  
+  * **Two-Round SGKF Algorithm**:
+    * **Round 1**: 5-fold SGKF → extract test set (20%)
+    * **Round 2**: 4-fold SGKF on remainder → extract validation (16%)
+    * **Final**: 64% train / 16% validation / 20% test with perfect group separation
+  
+  * **Critical Design Features**:
+    * **Group Isolation**: `player_id` grouping prevents player-specific overfitting
+    * **Class Stratification**: Maintains `testmode` distribution across all splits
+    * **Deterministic Splitting**: Fixed random seed with deterministic ordering
+    * **Leakage Prevention**: Player biomechanical patterns never leak between partitions
+  
+  * **Technical Implementation**:
+    * **Library**: `sklearn.model_selection.StratifiedGroupKFold`
+    * **Group Column**: `player_id` (93 unique players)
+    * **Target Column**: `testmode` (0=air swing, 1=full power, 2=stable)
+    * **Index Persistence**: JSON files preserve exact row indices for reproducibility
+  
+  * **Output Files**:
+    * `splits/train.json` - Training set row indices 
+    * `splits/val.json` - Validation set row indices
+    * `splits/test.json` - Test set row indices
+  
+  * **Validation Benefits**:
+    * **Realistic Performance**: Estimates generalization to new players
+    * **Prevents Overfitting**: No memorization of player-specific patterns
+    * **Statistical Validity**: Confidence intervals reflect true generalization uncertainty
+  
+  * **Documentation**: Splitting strategy and rationale detailed in `DOCUMENT.md` Section 2.5
 
 * **Baseline Model: Multinomial Logistic Regression for 3-Class Classification**
 
@@ -194,432 +287,376 @@ The project follows a **comprehensive documentation strategy** centered around `
   * **Course Staff/Instructor**: Evaluates methodology, results presentation, and technical depth through `DOCUMENT.md`.
   * **Technical Reviewer**: Ensures code runs in the `ml_assignment` Conda environment with up-to-date packages.
 
-* **Key User Flows**
+* **Enhanced User Flows**
 
-  1. **Environment Setup**
+  1. **Environment Setup & Prerequisites**
 
-     * Activate Conda env:
-
+     * **Conda Environment Activation**:
        ```bash
        conda activate ml_assignment
        ```
-     * Install latest libraries:
-
+     * **Required Dependencies Installation**:
        ```bash
-       conda install -y python>=3.10 pandas numpy scikit-learn lightgbm torch gpytorch shap optuna matplotlib seaborn joblib
+       conda install -y python>=3.10 pandas numpy scikit-learn lightgbm 
+       conda install -y torch gpytorch shap optuna matplotlib seaborn joblib
+       conda install -y scipy  # For signal processing (butter, filtfilt)
        ```
-  2. **Data Preprocessing**
+     * **Data Location Verification**: Ensure `data/raw/assignTTSWING.csv` exists
+     * **Directory Structure Creation**: `logs/`, `models/`, `results/`, `splits/` auto-created
 
-     * Run:
+  2. **Enhanced Data Preprocessing Pipeline**
 
+     * **ETL with Signal Processing**:
        ```bash
        python src/etl.py \
          --input data/raw/assignTTSWING.csv \
-         --output data/processed/processed.csv
+         --output data/processed/processed_dataset.csv \
+         --log-level INFO
        ```
-     * Validates unit conversion and cleaning; logs counts of dropped/outlier rows.
-  3. **Data Splitting**
+     * **Features**: Unit conversion, median despike, Butterworth filtering, categorical encoding
+     * **Quality Checks**: Outlier detection, missing data handling, target validation
+     * **Logging**: Comprehensive transformation logs in `logs/etl.log`
 
-     * Run:
+  3. **Group-Aware Data Splitting**
 
+     * **Two-Round StratifiedGroupKFold**:
        ```bash
        python src/split_data.py \
-         --input data/processed/processed.csv \
-         --output_dir splits/
+         --input data/processed/processed_dataset.csv \
+         --output_dir splits/ \
+         --group_col id \
+         --target_col testmode \
+         --seed 123
        ```
-     * Produces `splits/train.json`, `splits/val.json`, `splits/test.json`.
-  4. **Model Training**
+     * **Output**: `splits/train.json`, `splits/val.json`, `splits/test.json`
+     * **Validation**: Player separation + class balance verification
+     * **Reproducibility**: Fixed seed ensures identical splits across runs
 
-     * **Logistic Regression**:
+  4. **Model Training Pipeline**
 
+     * **Logistic Regression Baseline**:
        ```bash
        python src/train_lr.py \
+         --data data/processed/processed_dataset.csv \
          --splits splits/train.json splits/val.json \
-         --output models/lr.pkl
+         --output_dir models
        ```
-     * **Random Forest**:
-
+     * **Random Forest Ensemble**:
        ```bash
        python src/train_rf.py \
+         --data data/processed/processed_dataset.csv \
          --splits splits/train.json splits/val.json \
-         --output models/rf.pkl
+         --output_dir models \
+         --n_trials 100
        ```
-     * **LightGBM**:
-
+     * **LightGBM with SHAP**:
        ```bash
        python src/train_lgbm.py \
+         --data data/processed/processed_dataset.csv \
          --splits splits/train.json splits/val.json \
-         --output models/lgbm.pkl
+         --output_dir models \
+         --n_trials 100
        ```
-     * **Sparse GP**:
-
+     * **Sparse Gaussian Process**:
        ```bash
        python src/train_gp.py \
+         --data data/processed/processed_dataset.csv \
          --splits splits/train.json splits/val.json \
-         --output models/gp.pkl
+         --output_dir models \
+         --n_components 20 \
+         --n_inducing 1000
        ```
+
   5. **Evaluation & Artifact Generation**
 
-     * Run:
-
+     * **Comprehensive Model Comparison**:
        ```bash
        python src/evaluate.py \
          --models models/lr.pkl models/rf.pkl models/lgbm.pkl models/gp.pkl \
+         --data data/processed/processed_dataset.csv \
          --splits splits/test.json \
          --output_dir results/
        ```
-     * Outputs confusion matrices, linear coefficients, feature importance, SHAP plots, GP calibration plots, and `results/metrics.csv`.
-  6. **DOCUMENT.md Review and Completion**
+     * **Generated Artifacts**: Confusion matrices, feature importance, SHAP plots, GP calibration
+     * **Metrics Output**: `results/metrics.csv` with bootstrap confidence intervals
 
-     * **Primary Task**: Review and populate `DOCUMENT.md` with results from `results/` directory
-     * **Content Integration**: Insert generated figures, tables, and metrics into appropriate sections
-     * **Structure Verification**: Ensure all 8 main sections are complete and well-documented
-     * **Academic Standards**: Verify abstract is exactly 150 words and follows academic format
-     * **Reference Integration**: Ensure all figures and tables are properly referenced in text
-     * **Supporting Documentation**: Review `README.md`, preprocessing reports, and other docs for completeness
+  6. **DOCUMENT.md Assembly & Validation**
+
+     * **Content Integration**: Insert results from `results/` into `DOCUMENT.md` sections
+     * **Figure Validation**: Verify all plots are properly generated and referenced
+     * **Academic Standards**: Ensure 150-word abstract and professional formatting
+     * **Reproducibility Check**: Validate all parameters and configurations are documented
 
 * **UI/UX Considerations**
 
   * **Command‐Line–Driven**: All functionality via CLI—no interactive notebooks.
-  * **Clear File Organization**:
-
-    * `data/raw/assignTTSWING.csv` → `data/processed/processed.csv`
-    * `splits/` (JSON)
-    * `models/` (.pkl files)
-    * `results/` (plots + `metrics.csv`)
+  * **Enhanced File Organization**:
+    * `data/raw/assignTTSWING.csv` → `data/processed/processed_dataset.csv`
+    * `splits/` (JSON indices with group separation)
+    * `models/` (.pkl files + scaler + PCA)
+    * `results/` (plots + metrics + SHAP + calibration)
+    * `logs/` (detailed execution logs with timestamps)
     * `DOCUMENT.md` (primary deliverable at project root)
     * `docs/` (supporting documentation)
-  * **Logging & Metadata**: Each script logs start/end timestamps, random seeds, and key parameter values to `logs/`.
+  * **Advanced Logging & Metadata**: Each script logs start/end timestamps, random seeds, hyperparameters, and data quality metrics
+  * **Error Handling**: Graceful failure with informative error messages for missing files, data format issues
+  * **Progress Tracking**: Real-time progress indicators for long-running operations (Optuna, GP training)
 
-## Documentation Quality Standards
+## Enhanced Technical Requirements
 
-### DOCUMENT.md Requirements
-- **Length**: Comprehensive but concise (typically 15-25 pages when printed)
-- **Abstract**: Exactly 150 words covering objective, dataset, methods, top performance, key insight
-- **Figures**: All plots properly sized, labeled, and referenced in text
-- **Code Snippets**: Key implementation details included in context
-- **Academic Tone**: Professional language suitable for peer review
-- **Reproducibility**: All parameters, seeds, and configurations documented
+### Signal Processing Dependencies
+- **scipy**: Butterworth filter implementation (`butter`, `filtfilt`)
+- **numpy**: Optimized numerical computing for unit conversion and outlier detection
 
-### Supporting Documentation Standards  
-- **README.md**: Clear setup instructions, project overview, and quick-start guide
-- **Technical Reports**: Detailed EDA and preprocessing documentation
-- **Environment Specification**: Complete and tested `environment.yml`
-- **Code Documentation**: Clear docstrings and comments in all source files
+### Data Quality Assurance
+- **Comprehensive Logging**: Every transformation step logged with before/after statistics
+- **Physical Validation**: Sensor range checks based on manufacturer specifications
+- **Group Integrity**: Validation that player IDs are properly separated across splits
+- **Target Preservation**: Verification that class distribution is maintained
 
-<PRD>  
+### Reproducibility Standards
+- **Fixed Random Seeds**: All stochastic operations use seed=123
+- **Deterministic Splitting**: Group-aware splits are reproducible across runs
+- **Version Control**: All generated files tracked for consistency validation
+- **Environment Specification**: Complete dependency list with version constraints
+
 # Technical Architecture  
-- **Repository Structure**  
+- **Enhanced Repository Structure**  
   ```
   COMP4702_ML_Assignment/
   ├── data/
   │   ├── raw/
-  │   │   └── assignTTSWING.csv
+  │   │   └── assignTTSWING.csv              # Raw IMU dataset
   │   └── processed/
-  │       └── processed.csv
+  │       └── processed_dataset.csv          # Signal-processed, clean dataset
   ├── splits/
-  │   ├── train.json
-  │   ├── val.json
-  │   └── test.json
+  │   ├── train.json                        # Group-aware training indices
+  │   ├── val.json                          # Group-aware validation indices  
+  │   └── test.json                         # Group-aware test indices
   ├── models/
-  │   ├── lr.pkl
-  │   ├── rf.pkl
-  │   ├── lgbm.pkl
-  │   └── gp.pkl
+  │   ├── scaler.pkl                        # StandardScaler for feature normalization
+  │   ├── pca.pkl                           # PCA transformer (GP only)
+  │   ├── lr.pkl                            # Logistic Regression model
+  │   ├── rf.pkl                            # Random Forest model
+  │   ├── lgbm.pkl                          # LightGBM model
+  │   └── gp.pkl                            # Sparse Gaussian Process model
   ├── results/
-  │   ├── confusion_matrix_lr.png
-  │   ├── confusion_matrix_rf.png
-  │   ├── lr_coefficients.png
-  │   ├── val_curve_lr.png
-  │   ├── shap_summary_lgbm.png
-  │   ├── gp_calibration.png
-  │   └── metrics.csv
+  │   ├── confusion_matrix_*.png            # Confusion matrices for all models
+  │   ├── lr_coefficients.png               # Linear feature importance
+  │   ├── val_curve_lr.png                  # Logistic regression validation curve
+  │   ├── rf_feature_importance.png         # Gini-based feature rankings
+  │   ├── shap_summary_lgbm.png             # SHAP interpretability plots
+  │   ├── lgbm_partial_dependence.png       # Partial dependence plots
+  │   ├── gp_training_loss.png              # GP optimization convergence
+  │   ├── gp_reliability_diagram.png        # Calibration assessment
+  │   ├── gp_uncertainty_distribution.png   # Uncertainty quality analysis
+  │   └── metrics.csv                       # Comprehensive performance metrics
   ├── src/
-  │   ├── etl.py
-  │   ├── split_data.py
-  │   ├── train_lr.py
-  │   ├── train_rf.py
-  │   ├── train_lgbm.py
-  │   ├── train_gp.py
-  │   ├── evaluate.py
-  │   └── utils.py
+  │   ├── etl.py                            # Enhanced ETL with signal processing
+  │   ├── split_data.py                     # Group-aware data partitioning
+  │   ├── train_lr.py                       # Logistic regression baseline
+  │   ├── train_rf.py                       # Random forest ensemble
+  │   ├── train_lgbm.py                     # LightGBM with SHAP
+  │   ├── train_gp.py                       # Sparse Gaussian Process
+  │   ├── evaluate.py                       # Comprehensive model evaluation
+  │   └── utils.py                          # Shared utility functions
+  ├── logs/
+  │   ├── etl.log                           # Data preprocessing logs
+  │   ├── training.log                      # Model training logs
+  │   └── evaluation.log                    # Evaluation logs
   ├── docs/  
-  │   ├── ML_assignment_criteria.pdf       # Document criteria 
-  │   ├── ML_lecture_notes_full_rel2.pdf   # Lecture notes with ML concepts to follow
+  │   ├── ML_assignment_criteria.pdf        # Assignment marking criteria
+  │   ├── ML_lecture_notes_full_rel2.pdf    # Course lecture notes
   ├── DOCUMENT.md                           # PRIMARY DELIVERABLE - Academic report
   ├── README.md                             # Project setup and overview  
   ├── environment.yml                       # Conda environment specification
-  └── logs/                                # Execution logs and metadata
+  └── scripts/                              # Supporting utility scripts
+      ├── generate_shap_lgbm.py             # SHAP visualization generation
+      └── generate_pdp_lgbm.py              # Partial dependence plot generation
   ```
 
-* **System Components**
+* **Enhanced System Components**
 
-  1. **ETL Module (`etl.py`)**
+  1. **Enhanced ETL Module (`etl.py`)**
 
-     * Reads `data/raw/assignTTSWING.csv`.
-     * Converts IMU LSB → (g, °/s).
-     * Removes NaNs; filters outliers (‖a‖ > 30 g).
-     * Writes `data/processed/processed.csv`.
-  2. **Data Splitting Module (`split_data.py`)**
+     * **Signal Processing Pipeline**:
+       - Unit conversion using sensor specifications (±2g, ±250°/s)
+       - Median despike filter for artifact removal
+       - 5th-order Butterworth low-pass filter (20Hz cutoff)
+       - Linear interpolation for isolated missing values
+     * **Data Quality Assurance**:
+       - Physical outlier detection (‖acceleration‖ > 16g threshold)
+       - Categorical cleaning (remove '???' placeholder values)
+       - One-hot encoding for demographic categories
+       - Comprehensive logging of all transformations
+     * **Output**: `data/processed/processed_dataset.csv` ready for ML pipelines
 
-     * Loads `processed.csv`.
-     * Uses `GroupKFold(n_splits=...)` stratified by `player_id`.
-     * Splits into 70 % train · 15 % val · 15 % test; saves JSON indices.
-  3. **Model Training Modules**
+  2. **Group-Aware Data Splitting Module (`split_data.py`)**
 
-     * **`train_lr.py`**:
+     * **Two-Round StratifiedGroupKFold**:
+       - Round 1: 5-fold SGKF → extract test set (20%)
+       - Round 2: 4-fold SGKF on remainder → extract validation (16%)
+       - Final: 64% train / 16% validation / 20% test
+     * **Leakage Prevention**: Complete player separation across all splits
+     * **Class Balance**: Maintains `testmode` distribution in each partition
+     * **Reproducibility**: Fixed random seed with deterministic ordering
 
-       * Loads train/val splits.
-       * Applies `StandardScaler` to numeric features; saves scaler for reuse.
-       * Uses grid search with 5-fold `GroupKFold` to tune Logistic Regression regularization.
-       * Trains final LR with best C parameter; serializes to `models/lr.pkl`.
-       * Generates validation curve and coefficient importance plots.
-     * **`train_rf.py`**:
+  3. **Enhanced Model Training Modules**
 
-       * Loads train/val splits.
-       * Applies `StandardScaler` to numeric features (reuses scaler from LR).
-       * Uses Optuna + 5-fold `GroupKFold` to tune Random Forest.
-       * Trains final RF with best hyperparameters; serializes to `models/rf.pkl`.
-     * **`train_lgbm.py`**:
+     * **`train_lr.py`**: Multinomial logistic regression with L2 regularization
+       - Grid search over C parameter with GroupKFold CV
+       - Balanced class weights for imbalanced data
+       - Feature coefficient analysis and validation curves
+     
+     * **`train_rf.py`**: Random Forest with Optuna optimization
+       - Hyperparameter search: n_estimators, max_depth, max_features
+       - Out-of-bag error monitoring for overfitting detection
+       - Gini-based feature importance ranking
+     
+     * **`train_lgbm.py`**: LightGBM with advanced interpretability
+       - Optuna hyperparameter optimization with early stopping
+       - SHAP value computation for model explainability
+       - Partial dependence plots for feature relationship analysis
+     
+     * **`train_gp.py`**: Sparse Gaussian Process with uncertainty quantification
+       - PCA dimensionality reduction for computational efficiency
+       - K-means inducing point selection (1000 points)
+       - Variational inference training
+       - Calibration assessment and reliability diagrams
 
-       * Loads train/val splits; reuses scaler from previous models.
-       * Optuna + 5-fold `GroupKFold` to tune LightGBM (early stopping every 50 rounds).
-       * Computes SHAP values for interpretability; saves SHAP summary.
-       * Serializes model to `models/lgbm.pkl`.
-     * **`train_gp.py`**:
+  4. **Comprehensive Evaluation Module (`evaluate.py`)**
 
-       * Loads train/val splits; applies `StandardScaler`, then PCA (n\_components = 20).
-       * Constructs GPytorch model with RBF kernel and 1 000 inducing points.
-       * Optimizes ℓ & σ² via marginal likelihood (Week 11).
-       * Saves trained GP to `models/gp.pkl`.
-  4. **Evaluation Module (`evaluate.py`)**
-
-     * Loads all models: `models/lr.pkl`, `models/rf.pkl`, `models/lgbm.pkl`, `models/gp.pkl` and `splits/test.json`.
-     * Applies identical preprocessing pipelines (scaler, PCA) to test set.
-     * For each model:
-
-       * Computes predictions, class probabilities.
-       * Calculates Macro-F1, balanced accuracy, per-class precision/recall.
-       * Generates confusion matrix plot (matplotlib).
-       * For LR: plots coefficient importance; for RF: plots Gini importance; for LightGBM: plots SHAP summary; for GP: reliability diagram & ECE.
-     * Compiles metrics into `results/metrics.csv`.
+     * **Multi-Model Assessment**: Load and evaluate all four trained models
+     * **Standardized Preprocessing**: Apply identical transforms (scaler, PCA)
+     * **Bootstrap Confidence Intervals**: 1000-sample resampling with group preservation
+     * **Visualization Pipeline**: Generate confusion matrices, importance plots, calibration curves
+     * **Metrics Compilation**: Comprehensive CSV with all performance measures
 
 * **Data Models & Storage**
 
-  * **Raw Data**: `assignTTSWING.csv` with columns `stroke_id`, `player_id`, six raw IMU axes, precomputed stats, and **target variable `testmode`** (0="air swing", 1="full power", 2="stable").
-  * **Processed Data**: Numeric columns converted to physical units; no NaNs; outliers removed; target variable preserved.
-  * **JSON Splits**: Lists of integer indices for train/val/test maintaining class distribution.
-  * **Pickles**: Serialized Python objects containing fitted models, scalers, and PCA pipeline.
-  * **Results Directory**: Contains PNG artifacts and final metrics CSV with 4-model 3-class performance evaluation.
+  * **Raw Data**: `assignTTSWING.csv` with IMU statistics, player demographics, and `testmode` labels
+  * **Processed Data**: Signal-filtered, unit-converted, categorical-encoded, outlier-removed dataset
+  * **Split Indices**: JSON arrays maintaining group separation and class balance
+  * **Model Artifacts**: Serialized Python objects (models, scalers, PCA) with consistent interfaces
+  * **Results Archive**: PNG visualizations, CSV metrics, and JSON configuration files
 
-* **Dependencies & Environment**
+* **Enhanced Dependencies & Environment**
 
-  * Managed via Conda environment `ml_assignment`.
-  * **Python Version**: Latest stable (≥ 3.10).
-  * **Primary Packages**:
-
-    * pandas, numpy (data handling)
-    * scikit-learn (preprocessing, `GroupKFold`, PCA, LogisticRegression, RandomForest)
-    * lightgbm (LGBMClassifier)
-    * torch, gpytorch (Sparse GP)
-    * shap (SHAP plots)
-    * optuna (hyperparameter optimization)
-    * matplotlib, seaborn (plots)
-    * joblib (serialization)
-    * json (split I/O)
-  * **environment.yml**: Lists the latest versions for reproducibility (no pinned minor versions).
+  * **Environment Management**: Conda environment `ml_assignment` with pinned versions
+  * **Core ML Stack**:
+    * pandas, numpy (data manipulation with signal processing)
+    * scikit-learn (preprocessing, models, evaluation, GroupKFold)
+    * lightgbm (gradient boosting with SHAP integration)
+    * torch, gpytorch (Bayesian deep learning for uncertainty quantification)
+  * **Signal Processing**: scipy (Butterworth filters, interpolation)
+  * **Interpretability**: shap (model explainability)
+  * **Optimization**: optuna (automated hyperparameter tuning)
+  * **Visualization**: matplotlib, seaborn (publication-quality plots)
+  * **Serialization**: joblib (efficient model persistence)
 
 # Development Roadmap
 
-*Organized by feature scope; no specific dates—each phase can be subdivided into tasks once scoped.*
+*Enhanced roadmap reflecting current implementation status and remaining work.*
 
-#### Phase 1 · Data Understanding & Preprocessing
+#### Phase 1 · Enhanced Data Processing & Quality Assurance ✅ COMPLETED
 
-* **Data Location Confirmed**: `data/raw/assignTTSWING.csv` (Dryad DOI 10.5061/dryad.0zpc8677f).
+* **Enhanced ETL Implementation (`etl.py`)** ✅
+  * Signal processing pipeline with unit conversion
+  * Median despike + Butterworth filtering for noise reduction
+  * Physical outlier detection (‖acceleration‖ > 16g)
+  * Categorical cleaning and one-hot encoding
+  * Comprehensive logging and quality validation
 
-* **EDA & Feature Examination**
+* **Group-Aware Data Splitting (`split_data.py`)** ✅
+  * Two-round StratifiedGroupKFold implementation
+  * Player-based group separation preventing data leakage
+  * Class-balanced splits with deterministic reproducibility
+  * JSON persistence of exact row indices
 
-  * Generate univariate/bivariate distributions for raw IMU stats by swing type.
-  * **Critical: Class‐balance analysis of `testmode`** (0="air swing", 1="full power", 2="stable") to understand target distribution.
-  * Correlation heatmap to identify highly correlated features and their relationship to swing types.
-  * **Target Variable Analysis**: Examine distribution of swing types across players and sessions.
+#### Phase 2 · Baseline Model Implementation ✅ COMPLETED
 
-* **Implement ETL (`etl.py`)**
+* **Logistic Regression Baseline** ✅
+  * Multinomial classification with L2 regularization
+  * Grid search optimization with GroupKFold CV
+  * Feature coefficient analysis and validation curves
+  * Performance baseline establishment
 
-  * Unit conversion (Week 3).
-  * Drop NaNs; remove outliers where ‖a‖ > 30 g (Week 5).
-  * Log counts: total rows, dropped rows, outliers flagged.
-  * Output to `data/processed/processed.csv`.
+#### Phase 3 · Advanced Ensemble Models ✅ COMPLETED
 
-* **Implement Data Splitting (`split_data.py`)**
+* **Random Forest Implementation** ✅
+  * Optuna hyperparameter optimization
+  * Out-of-bag error monitoring
+  * Gini-based feature importance analysis
 
-  * Use `GroupKFold(n_splits=...)` to ensure no `player_id` leak across partitions (Week 4).
-  * Random seed `SEED = 123` for reproducibility.
-  * Save JSON: `train.json`, `val.json`, `test.json`.
+* **LightGBM with Interpretability** ✅
+  * Gradient boosting with early stopping
+  * SHAP value computation and visualization
+  * Partial dependence plot generation
+  * Advanced feature interaction analysis
 
-#### Phase 2 · Baseline Model Implementation (Logistic Regression)
+#### Phase 4 · Uncertainty Quantification ✅ COMPLETED
 
-* **Preprocessing**
+* **Sparse Gaussian Process** ✅
+  * PCA dimensionality reduction implementation
+  * K-means inducing point selection
+  * Variational inference training
+  * Uncertainty calibration assessment
+  * Reliability diagram generation
 
-  * Fit `StandardScaler` on train set; persist to `models/scaler.pkl`.
-  * One-hot encode any categorical metadata (if present) via `pd.get_dummies(drop_first=True)`.
-* **Training & Tuning (`train_lr.py`)**
+#### Phase 5 · Comprehensive Evaluation ⏳ IN PROGRESS
 
-  * Define grid search over regularization parameter C ∈ {10⁻³, 10⁻², 10⁻¹, 1, 10, 100}.
-  * Employ 5-fold `GroupKFold` with macro-F1 optimization.
-  * Configure: `multi_class='multinomial'`, `penalty='l2'`, `solver='saga'`, `class_weight='balanced'`.
-  * Log best parameters; train final LR on full train set.
-  * Save: `models/lr.pkl`.
-* **Diagnostics**
+* **Multi-Model Evaluation Framework**
+  * Standardized preprocessing pipeline application
+  * Bootstrap confidence interval computation
+  * Confusion matrix generation for all models
+  * Feature importance comparison across methods
 
-  * Generate validation curve (F1 vs log₁₀ C); save to `results/val_curve_lr.png`.
-  * Create confusion matrix on validation set; save to `results/confusion_matrix_lr.png`.
-  * Plot coefficient importance bar chart; save to `results/lr_coefficients.png`.
-  * Establish linear performance baseline for comparison with ensemble methods.
+#### Phase 6 · Documentation Assembly & Completion 📋 PENDING
 
-#### Phase 3 · Advanced Model 1 Implementation (Random Forest)
+* **DOCUMENT.md Population**
+  * Results integration from `results/` directory
+  * Performance metric analysis and interpretation
+  * Model comparison with statistical significance testing
+  * Technical methodology documentation
 
-* **Preprocessing**
+* **Academic Report Finalization**
+  * 150-word abstract completion
+  * Figure and table integration with proper referencing
+  * Discussion of model trade-offs and limitations
+  * Future work recommendations
 
-  * Reuse `StandardScaler` and encoding from Phase 2.
-* **Training & Tuning (`train_rf.py`)**
+#### Phase 7 · Quality Assurance & Validation 📋 PENDING
 
-  * Define Optuna search:
+* **Reproducibility Verification**
+  * End-to-end pipeline testing from raw data
+  * Cross-platform compatibility validation
+  * Environment specification verification
 
-    * `n_estimators`, `max_depth`, `max_features`, `min_samples_leaf`.
-  * Employ 5-fold `GroupKFold`.
-  * Log best parameters; train final RF on full train set.
-  * Save: `models/rf.pkl`.
-* **Diagnostics**
+* **Documentation Quality Control**
+  * Academic writing standards compliance
+  * Technical accuracy verification
+  * Reference and citation completeness
 
-  * Generate OOB error curve; produce validation curves for key hyperparameters.
-  * Create confusion matrix on validation set; save to `results/confusion_matrix_rf.png`.
-  * Extract Gini importances; include top 10 features in `DOCUMENT.md`.
+# Enhanced Implementation Dependencies
 
-#### Phase 4 · Advanced Model 2 Implementation (LightGBM)
+## Signal Processing Dependencies
+- **scipy**: Advanced signal processing (Butterworth filters, interpolation)
+- **numpy**: Optimized numerical computing for unit conversion and outlier detection
 
-* **Preprocessing**
+## Machine Learning Stack
+- **scikit-learn**: Comprehensive ML toolkit with GroupKFold capabilities
+- **lightgbm**: High-performance gradient boosting with SHAP integration
+- **torch + gpytorch**: Bayesian deep learning for uncertainty quantification
 
-  * Reuse `StandardScaler` and encoding from previous phases.
-* **Training & Tuning (`train_lgbm.py`)**
+## Data Quality & Reproducibility
+- **pandas**: Advanced data manipulation with rolling window operations
+- **joblib**: Efficient model serialization and parallel processing
+- **json**: Standardized data interchange for split indices
 
-  * Define Optuna search: `num_leaves`, `learning_rate`, `max_depth`, `feature_fraction`, `n_estimators`.
-  * Early stopping every 50 rounds on validation set.
-  * Save best model: `models/lgbm.pkl`.
-* **Interpretability**
-
-  * Compute SHAP values on validation set; save summary plot to `results/shap_summary_lgbm.png`.
-  * Partial Dependence Plots on top 5 features.
-
-#### Phase 5 · Advanced Model 3 Implementation (Sparse Gaussian Process)
-
-* **Dimensionality Reduction**
-
-  * Fit PCA (n\_components = 20) on train set; save `models/pca.pkl`.
-* **Training & Tuning (`train_gp.py`)**
-
-  * Preprocess train/val data: apply `scaler.pkl`, then `pca.pkl`.
-  * Build GPytorch model with RBF kernel; use k-means to select 1 000 inducing points.
-  * Optimize ℓ & σ² via marginal likelihood.
-  * Save GP model: `models/gp.pkl`.
-* **Calibration & Uncertainty**
-
-  * Generate reliability diagram; compute ECE; save `results/gp_calibration.png`.
-
-#### Phase 6 · Evaluation & Artifact Collection
-
-* **Evaluation Script (`evaluate.py`)**
-
-  * Input: All four models `models/lr.pkl`, `models/rf.pkl`, `models/lgbm.pkl`, `models/gp.pkl` + `splits/test.json`.
-  * Preprocess test set: apply `scaler.pkl` → `pca.pkl` (for GP).
-  * For each model:
-
-    * Predict test labels; compute Macro-F1, balanced accuracy, per-class precision/recall.
-    * Save confusion matrix to `results/`.
-    * LR: plot coefficient importance; RF: plot Gini importance; LightGBM: plot SHAP summary; GP: plot reliability diagram & compute ECE.
-  * Collate all metrics into `results/metrics.csv`.
-
-* **DOCUMENT.md Assembly**
-
-  * Use markdown structure with 4-model comparison.
-  * Sections must include:
-
-    1. **Introduction & Project Philosophy**
-
-       * State primary goals and course connections.
-    2. **Dataset Specification**
-
-       * Describe `assignTTSWING.csv`: size, features, target, unit conversions.
-       * Data quality rules & filtering rationale.
-       * Splitting protocol.
-    3. **Methodology & Preprocessing**
-
-       * Detail ETL steps with code snippets (`etl.py`).
-       * Explain `GroupKFold` split logic (`split_data.py`), seed usage.
-    4. **Model Implementation & Tuning**
-
-       * **Logistic Regression**: linear baseline, regularization grid, coefficient interpretation.
-       * **Random Forest**: hyperparameter grid, OOB error, feature importances.
-       * **LightGBM**: boosting theory, Optuna workflow, SHAP.
-       * **Sparse GP**: Bayesian GP fundamentals, PCA justification, inducing points, calibration.
-    5. **Evaluation & Results**
-
-       * Present tables/plots: `metrics.csv`, confusion matrices, coefficient plots, SHAP summaries, GP calibration.
-       * Include bootstrap CI results for Macro-F1.
-    6. **Discussion & Depth**
-
-       * Analyze bias–variance tradeoff for each model.
-       * Interpretability comparison (coefficients vs. Gini vs. SHAP vs. GP confidence).
-       * Practical considerations: compute time, scalability.
-       * Model complexity progression from linear to Bayesian.
-    7. **Appendix**
-
-       * Hyperparameter search spaces (full grid/Optuna configurations).
-       * Exact Conda `environment.yml`.
-       * Assumptions (e.g., Gaussian sensor noise σ\_IMU = 0.05 g).
-       * References: lecture notes and Dryad DOI.
-
-# Logical Dependency Chain
-
-1. **ETL (`etl.py`) → Splitting (`split_data.py`)**
-
-   * Must produce a clean `processed.csv` before generating consistent JSON splits.
-2. **Splitting → Baseline Model (`train_lr.py`)**
-
-   * Requires `train.json` & `val.json` and the fitted `StandardScaler`.
-3. **Baseline Model Analysis → LightGBM (`train_lgbm.py`)**
-
-   * LR's insights (e.g., top features, distribution) can inform LightGBM's hyperparameter ranges.
-4. **LightGBM Artifacts → Sparse GP (`train_gp.py`)**
-
-   * Use LightGBM's feature importance to decide which features to retain in PCA (if needed).
-5. **Trained Models → Evaluation (`evaluate.py`)**
-
-   * Needs all three `.pkl` files and `test.json` to compute final metrics.
-6. **Evaluation Artifacts → DOCUMENT.md Completion**
-
-   * Figures/metrics generated from `results/` populate all sections of `DOCUMENT.md`
-   * Performance tables, confusion matrices, SHAP plots integrated into academic narrative
-   * Statistical results and confidence intervals documented with proper interpretation
-
-# Documentation Workflow
-
-## Pre-Implementation Documentation Review
-1. **Review DOCUMENT.md Structure**: Ensure all 8 sections are properly outlined
-2. **Verify Documentation Standards**: Check academic format, abstract word count, reference style
-3. **Prepare Figure Placeholders**: Identify where results will be integrated
-
-## During Implementation
-1. **Log Key Decisions**: Document any deviations from planned methodology  
-2. **Save Intermediate Results**: Ensure all plots and metrics are generated in `results/`
-3. **Update Code Comments**: Maintain clear documentation for key functions
-
-## Post-Implementation Documentation
-1. **Populate DOCUMENT.md**: Insert all results, figures, and performance metrics
-2. **Complete Analysis Sections**: Write interpretation and discussion of results
-3. **Verify Academic Standards**: Ensure professional tone and proper structure
-4. **Cross-Reference Validation**: Confirm all figures/tables are referenced in text
-5. **Final Review**: Complete readthrough for clarity, accuracy, and completeness
+## Visualization & Interpretability
+- **matplotlib + seaborn**: Publication-quality scientific visualization
+- **shap**: Model-agnostic explainability framework
+- **optuna**: Automated hyperparameter optimization with pruning
 
 # Risks and Mitigations
 
@@ -636,6 +673,24 @@ The project follows a **comprehensive documentation strategy** centered around `
     ```bash
     conda env create -f environment.yml
     ```
+
+* **Enhanced Risk: Signal Processing Complexity**
+
+  * *Issue*: Butterworth filtering and median despike may introduce artifacts or remove important signal content
+  * *Mitigation*: 
+    - Use conservative filter parameters (20Hz cutoff for 200Hz sampling)
+    - Implement zero-phase filtering to preserve temporal relationships
+    - Document filter specifications and provide rationale in `DOCUMENT.md`
+    - Log before/after statistics to verify signal preservation
+
+* **Enhanced Risk: Group Splitting Complexity**
+
+  * *Issue*: Two-round StratifiedGroupKFold may create imbalanced splits or fail with insufficient groups
+  * *Mitigation*:
+    - Validate minimum group sizes before splitting
+    - Log group distribution across splits for verification
+    - Implement fallback to simpler GroupKFold if stratification fails
+    - Document group separation validation in evaluation
 
 * **Risk: Overfitting in Hyperparameter Tuning**
 
@@ -655,23 +710,24 @@ The project follows a **comprehensive documentation strategy** centered around `
     * Fix inducing point count at 1 000.
     * Monitor and log training time; consider early stopping if convergence stalls.
 
-* **Risk: Incomplete Documentation**
+* **Enhanced Risk: Documentation Quality & Academic Standards**
 
-  * *Issue*: `DOCUMENT.md` may lack technical depth or proper academic format.
+  * *Issue*: `DOCUMENT.md` may lack sufficient technical depth or fail academic formatting requirements
   * *Mitigation*: 
-    * Follow the structured 8-section format with detailed subsections
+    * Follow structured 8-section academic format with detailed methodology
     * Ensure 150-word abstract meets all requirements (objective, dataset, methods, results, insights)
-    * Include comprehensive appendix with hyperparameters, code snippets, and assumptions
-    * Maintain professional academic tone throughout
+    * Include comprehensive appendix with hyperparameters, assumptions, and code
+    * Maintain professional academic tone with proper citations and references
+    * Cross-validate all reported results against actual generated outputs
 
-* **Risk: Documentation-Code Mismatch**
+* **Enhanced Risk: Signal Processing Parameter Selection**
 
-  * *Issue*: Results in `DOCUMENT.md` may not match actual implementation or generated artifacts.
+  * *Issue*: Filter cutoff frequency and outlier thresholds may be suboptimal for table tennis motion
   * *Mitigation*:
-    * Systematically populate `DOCUMENT.md` after each implementation phase
-    * Verify all figure references point to actual files in `results/`
-    * Cross-check performance metrics between code output and documented results
-    * Include version control for both code and documentation changes
+    * Base parameters on published literature for sports biomechanics
+    * Document parameter selection rationale with physical justification
+    * Implement parameter validation through signal-to-noise ratio analysis
+    * Log filter impact statistics for transparency
 
 * **Risk: JSON Split File Corruption**
 
@@ -680,6 +736,7 @@ The project follows a **comprehensive documentation strategy** centered around `
 
     * Version‐control `splits/` directory.
     * Add a checksum check in `split_data.py` to validate JSON integrity before use.
+    * Implement group separation validation in evaluation scripts
 
 # Appendix
 
@@ -687,75 +744,135 @@ The project follows a **comprehensive documentation strategy** centered around `
 
   * Dryad DOI 10.5061/dryad.0zpc8677f → local path `data/raw/assignTTSWING.csv`.
 
-* **Primary Documentation Links**
+* **Enhanced Primary Documentation Links**
   
-  * **Main Report**: `DOCUMENT.md` (academic-style comprehensive report)
-  * **Setup Guide**: `README.md` (environment and execution instructions)  
-  * **EDA Report**: `docs/preprocessing_report.md` (detailed data analysis)
-  * **Project Scope**: `docs/SCOPE.md` (requirements and objectives)
-  * **Technical Assumptions**: `docs/ASSUMPTIONS.md` (modeling decisions and constraints)
+  * **Main Report**: `DOCUMENT.md` (academic-style comprehensive report with signal processing methodology)
+  * **Setup Guide**: `README.md` (environment, dependencies, and execution instructions)  
+  * **ETL Documentation**: Detailed signal processing pipeline in `src/etl.py` docstrings
+  * **Splitting Documentation**: Group-aware methodology in `src/split_data.py` 
+  * **Model Documentation**: Individual training scripts with comprehensive parameter documentation
 
-* **Documentation Standards Reference**
+* **Enhanced Documentation Standards Reference**
 
-  * **Academic Format**: Standard ML paper structure (Abstract → Introduction → Methods → Results → Discussion → Conclusion → References → Appendix)
-  * **Word Count**: Abstract exactly 150 words
-  * **Visual Standards**: All figures properly labeled, sized, and referenced in text
-  * **Code Integration**: Key implementation details included as snippets
-  * **Reproducibility**: All parameters, seeds, configurations documented
+  * **Academic Format**: Standard ML paper structure with enhanced methodology sections
+  * **Signal Processing Standards**: Detailed filter specifications and parameter justification
+  * **Group Validation**: Documentation of player separation and leakage prevention
+  * **Reproducibility Standards**: Complete parameter documentation with fixed random seeds
+  * **Statistical Validation**: Bootstrap confidence intervals with group-aware resampling
 
-* **Conda Environment** (`environment.yml`)
+* **Enhanced Conda Environment** (`environment.yml`)
 
   ```yaml
   name: ml_assignment
   channels:
     - defaults
     - pytorch
+    - conda-forge
   dependencies:
     - python>=3.10
-    - pandas
-    - numpy
-    - scikit-learn
-    - lightgbm
-    - pytorch
-    - gpytorch
-    - shap
-    - optuna
-    - matplotlib
-    - seaborn
-    - joblib
+    - pandas>=1.5.0
+    - numpy>=1.24.0
+    - scikit-learn>=1.2.0
+    - lightgbm>=3.3.0
+    - pytorch>=1.13.0
+    - gpytorch>=1.9.0
+    - scipy>=1.9.0      # Signal processing (butter, filtfilt)
+    - shap>=0.41.0
+    - optuna>=3.0.0
+    - matplotlib>=3.6.0
+    - seaborn>=0.11.0
+    - joblib>=1.2.0
     - pip
   ```
 
-  *(Latest stable versions will be installed when this environment is created.)*
+* **Enhanced Assumptions & Technical Specifications**
 
-* **Assumptions**
+  1. **Signal Processing**:
+     - IMU sampling frequency: 200 Hz (inferred from filter design)
+     - Sensor noise: Gaussian with σ_IMU = 0.05g
+     - Butterworth filter: 5th-order, 20Hz cutoff (0.1 × Nyquist frequency)
+     - Median filter: 3-point window for spike removal
 
-  1. Sensor noise \~ N(0, 0.05² g).
-  2. No systematic domain shift across `player_id`.
-  3. Kernel hyperparameters for GP initialized via median heuristic.
+  2. **Physical Constraints**:
+     - Table tennis acceleration: typically < 10g for human motion
+     - Outlier threshold: 16g (beyond sensor specification)
+     - Angular rate range: ±250°/s sensor specification
 
-* **How to Reproduce**
+  3. **Group Structure**:
+     - 93 unique players with varying swing counts
+     - No systematic domain shift across players assumed
+     - Player-specific biomechanical patterns require group separation
 
-  1. Clone repository.
-  2. Create Conda env:
+  4. **Model-Specific**:
+     - GP inducing points: K-means initialization adequate for feature space
+     - PCA components: 20 captures >95% variance for dimensional reduction
+     - Bootstrap resampling: 1000 iterations with group preservation
 
+* **Enhanced Reproduction Instructions**
+
+  1. **Environment Setup**:
      ```bash
+     # Create and activate Conda environment
      conda env create -f environment.yml
      conda activate ml_assignment
+     
+     # Verify critical dependencies
+     python -c "import scipy.signal; import sklearn.model_selection; import gpytorch"
      ```
-  3. Ensure `data/raw/assignTTSWING.csv` is present.
-  4. Execute, in sequence:
 
+  2. **Data Verification**:
      ```bash
-     python src/etl.py --input data/raw/assignTTSWING.csv --output data/processed/processed.csv
-     python src/split_data.py --input data/processed/processed.csv --output_dir splits/
-     python src/train_lr.py --splits splits/train.json splits/val.json --output models/lr.pkl
-     python src/train_rf.py --splits splits/train.json splits/val.json --output models/rf.pkl
-     python src/train_lgbm.py --splits splits/train.json splits/val.json --output models/lgbm.pkl
-     python src/train_gp.py --splits splits/train.json splits/val.json --output models/gp.pkl
-     python src/evaluate.py --models models/lr.pkl models/rf.pkl models/lgbm.pkl models/gp.pkl \
-       --splits splits/test.json --output_dir results/
+     # Verify data file exists and has expected structure
+     ls -la data/raw/assignTTSWING.csv
+     python -c "import pandas as pd; df=pd.read_csv('data/raw/assignTTSWING.csv'); print(f'Shape: {df.shape}'); print(f'Columns: {list(df.columns)}')"
      ```
-  5. **Complete Documentation**: Populate `DOCUMENT.md` with results from `results/` directory, ensuring all sections are complete and follow academic standards.
 
-</PRD>
+  3. **Complete Pipeline Execution**:
+     ```bash
+     # Enhanced ETL with signal processing
+     python src/etl.py \
+       --input data/raw/assignTTSWING.csv \
+       --output data/processed/processed_dataset.csv \
+       --log-level INFO
+
+     # Group-aware data splitting  
+     python src/split_data.py \
+       --input data/processed/processed_dataset.csv \
+       --output_dir splits/ \
+       --group_col id \
+       --target_col testmode \
+       --seed 123
+
+     # Model training sequence
+     python src/train_lr.py --data data/processed/processed_dataset.csv --splits splits/train.json splits/val.json --output_dir models
+     python src/train_rf.py --data data/processed/processed_dataset.csv --splits splits/train.json splits/val.json --output_dir models --n_trials 100
+     python src/train_lgbm.py --data data/processed/processed_dataset.csv --splits splits/train.json splits/val.json --output_dir models --n_trials 100  
+     python src/train_gp.py --data data/processed/processed_dataset.csv --splits splits/train.json splits/val.json --output_dir models --n_components 20 --n_inducing 1000
+
+     # Comprehensive evaluation
+     python src/evaluate.py \
+       --models models/lr.pkl models/rf.pkl models/lgbm.pkl models/gp.pkl \
+       --data data/processed/processed_dataset.csv \
+       --splits splits/test.json \
+       --output_dir results/
+     ```
+
+  4. **Validation Checks**:
+     ```bash
+     # Verify all outputs generated
+     ls -la models/ results/ splits/
+     
+     # Check log files for any errors
+     cat logs/etl.log | grep -i error
+     
+     # Validate group separation in splits
+     python -c "
+     import json, pandas as pd
+     df = pd.read_csv('data/processed/processed_dataset.csv')
+     with open('splits/train.json') as f: train_idx = json.load(f)
+     with open('splits/test.json') as f: test_idx = json.load(f)
+     train_players = set(df.iloc[train_idx]['id'])
+     test_players = set(df.iloc[test_idx]['id'])
+     print(f'Player overlap: {len(train_players & test_players)} (should be 0)')
+     "
+     ```
