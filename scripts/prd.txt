@@ -1,187 +1,583 @@
-# Overview  
-COMP4702 Machine Learning Assignment - Demonstrate understanding of course content through systematic application of ML concepts to tennis swing classification using assignTTSWING.csv. The primary goal is to show mastery of COMP4702 lecture material through **data-driven model selection** and theoretical justification. Model choices are based on data characteristics and course principles: Logistic Regression (baseline), Random Forest (ensemble learning), and SVM (margin maximization).
+# Overview
 
-# Core Features  
-## Data Understanding and Preprocessing Pipeline
-- Load and analyze assignTTSWING.csv with systematic EDA using course principles
-- Justify preprocessing decisions based on data characteristics and course concepts
-- Feature scaling, selection, and engineering grounded in theoretical understanding
-- Class imbalance handling using course-taught techniques
-- Train/validation/test splits following course methodology
+The COMP4702 Machine Learning Assignment project implements an end‐to‐end pipeline for classifying table‐tennis swings using wearable IMU statistics. This PRD has been updated to reflect that the codebase is already initialized, raw data is located at `data/raw/assignTTSWING.csv`, and the environment is managed via the Conda environment named `ml_assignment`. Rather than producing a PDF report, the focus is on generating a comprehensive `DOCUMENT.md` that details methodology, results, and ties every section back to COMP4702 lecture concepts.
 
-## Three-Model Comparative Analysis
-- **Baseline: Logistic Regression** - Linear classification foundation with L1/L2 regularization
-- **Advanced 1: Random Forest** - Ensemble learning with bagging and feature importance
-- **Advanced 2: Support Vector Machine** - Margin maximization with kernel methods
-- Each model justified by data characteristics and course theoretical framework
-- Deep analysis showing understanding of when and why to use each technique
+# Core Features
 
-## Course Understanding Demonstration
-- **Mathematical Foundations**: Explain underlying mathematics for each model
-- **Theoretical Justification**: Connect implementations to course concepts
-- **Hyperparameter Analysis**: Systematic tuning with course-based reasoning
-- **Evaluation Framework**: Proper metrics and validation using course principles
-- **Comparative Analysis**: Models compared using course evaluation methodology
+* **Data Ingestion & Cleaning (ETL)**
 
-## Documentation and Reporting System
-- SCOPE.md for data analysis decisions with course concept connections
-- Shared MODEL.md file demonstrating understanding of each technique, analysis and reasoning behind parameters or changes.
-- Comparison of models within the MODEL.md file for theoretically-grounded model comparison and selection
-- All documentation explicitly references course concepts and lecture notes
-- Final report demonstrating course mastery through practical application
+  * **Location**: `data/raw/assignTTSWING.csv`.
+  * **Unit Conversion**: Raw LSB → physical units (Week 3):
 
-# Stakeholders
-- COMP4702 course instructors evaluating understanding of course content
-- Academic assessment focused on demonstrating theoretical knowledge through practical implementation
+    * Acceleration \[g] = raw × (2/32768)
+    * Angular rate \[°/s] = raw × (250/32768)
+  * **Data Quality Rules** (Week 3 & 5):
 
+    * Drop rows with NaN after type casting.
+    * Exclude records where ‖a‖ > 30 g.
+  * **Output**: Cleaned CSV at `data/processed/processed.csv`.
+
+* **Group‐Aware Data Partitioning**
+
+  * **Protocol**: Group hold‐out split by `player_id` using scikit‐learn’s `GroupKFold` (Week 4).
+  * **Split Ratios**: 70 % train · 15 % val · 15 % test.
+  * **Persistence**: JSON files in `splits/`: `train.json`, `val.json`, `test.json`.
+
+* **Baseline Model: Random Forest**
+
+  * **Library**: scikit‐learn’s `RandomForestClassifier`.
+  * **Hyperparameter Search**: Optuna with 5‐fold `GroupKFold` (Week 5 & 9).
+
+    * Search space:
+
+      * `n_estimators`: 100–600
+      * `max_depth`: {None, 5–15}
+      * `max_features`: {√p, 0.5–1.0}
+      * `min_samples_leaf`: 1–10
+  * **Outputs**:
+
+    * Trained model serialized to `models/rf.pkl`.
+    * Feature importance (Gini) for interpretability (Week 9).
+
+* **Advanced Model 1: LightGBM**
+
+  * **Library**: LightGBM `LGBMClassifier`.
+  * **Hyperparameter Search**: Optuna + 5‐fold `GroupKFold`.
+
+    * Search space:
+
+      * `num_leaves`: 31–255
+      * `learning_rate`: 1e-3–0.3 (log scale)
+      * `max_depth`: {–1, 4–12}
+      * `feature_fraction`: 0.6–1.0
+      * `n_estimators`: 200–2000
+  * **Interpretability**:
+
+    * SHAP summary plots (Week 10).
+    * Partial Dependence Plots for top features.
+  * **Outputs**:
+
+    * Model: `models/lgbm.pkl`.
+    * SHAP artifacts in `results/`.
+
+* **Advanced Model 2: Sparse Gaussian Process**
+
+  * **Library**: GPytorch (with PyTorch backend).
+  * **Preprocessing**: PCA reduced to 20 components (Week 6); `sklearn.decomposition.PCA`.
+  * **Sparse Approximation**:
+
+    * RBF kernel, 1 000 inducing points.
+    * Optimize lengthscale ℓ & noise σ² by marginal likelihood (Week 11).
+  * **Uncertainty Evaluation**:
+
+    * Reliability diagrams & Expected Calibration Error (ECE).
+  * **Outputs**:
+
+    * Model: `models/gp.pkl`.
+    * Calibration plots in `results/`.
+
+* **Evaluation & Metrics**
+
+  * **Primary Metric**: Macro‐F1 on test set (Week 4; handles class imbalance).
+  * **Secondary Metrics**: Accuracy, balanced accuracy, per‐class precision/recall (Week 4).
+  * **Uncertainty Metrics**: Brier score + ECE for GP (Week 11).
+  * **Statistical Confidence Intervals**: 1 000-sample bootstrap stratified by `player_id` for Macro‐F1 (Week 5).
+  * **Diagnostic Artifacts**:
+
+    * Confusion matrices (matplotlib) for each model.
+    * SHAP summaries (LightGBM).
+    * GP reliability curves.
+
+* **DOCUMENT.md Generation**
+
+  * Every figure, table, and code snippet must be referenced and described in `DOCUMENT.md`.
+  * Structure mirrors COMP4702 lecture progression (Weeks 1–11) and assignment rubric sections (Analysis, Presentation, Techniques, Results, Discussion, Depth).
+  * No PDF compilation step—`DOCUMENT.md` is the single living document for narrative, results, and course connections.
+
+# User Experience
+
+* **Users & Personas**
+
+  * **ML Student**: Seeks a reproducible, theory‐grounded example of a COMP4702 pipeline.
+  * **Course Staff/Instructor**: Verifies that each step ties back to lecture material without relying on notebooks.
+  * **Technical Reviewer**: Ensures code runs in the `ml_assignment` Conda environment with up-to-date packages.
+
+* **Key User Flows**
+
+  1. **Environment Setup**
+
+     * Activate Conda env:
+
+       ```bash
+       conda activate ml_assignment
+       ```
+     * Install latest libraries:
+
+       ```bash
+       conda install -y python>=3.10 pandas numpy scikit-learn lightgbm torch gpytorch shap optuna matplotlib seaborn joblib
+       ```
+  2. **Data Preprocessing**
+
+     * Run:
+
+       ```bash
+       python src/etl.py \
+         --input data/raw/assignTTSWING.csv \
+         --output data/processed/processed.csv
+       ```
+     * Validates unit conversion and cleaning; logs counts of dropped/outlier rows.
+  3. **Data Splitting**
+
+     * Run:
+
+       ```bash
+       python src/split_data.py \
+         --input data/processed/processed.csv \
+         --output_dir splits/
+       ```
+     * Produces `splits/train.json`, `splits/val.json`, `splits/test.json`.
+  4. **Model Training**
+
+     * **Random Forest**:
+
+       ```bash
+       python src/train_rf.py \
+         --splits splits/train.json splits/val.json \
+         --output models/rf.pkl
+       ```
+     * **LightGBM**:
+
+       ```bash
+       python src/train_lgbm.py \
+         --splits splits/train.json splits/val.json \
+         --output models/lgbm.pkl
+       ```
+     * **Sparse GP**:
+
+       ```bash
+       python src/train_gp.py \
+         --splits splits/train.json splits/val.json \
+         --output models/gp.pkl
+       ```
+  5. **Evaluation & Artifact Generation**
+
+     * Run:
+
+       ```bash
+       python src/evaluate.py \
+         --models models/rf.pkl models/lgbm.pkl models/gp.pkl \
+         --splits splits/test.json \
+         --output_dir results/
+       ```
+     * Outputs confusion matrices, SHAP plots, GP calibration plots, and `results/metrics.csv`.
+  6. **DOCUMENT.md Authoring**
+
+     * Populate `DOCUMENT.md` sections by copying templates from `docs/sections/` and inserting results from `results/`.
+     * Ensure each subsection references the specific lecture (e.g., “(Week 9: Bagging & Boosting)”), includes relevant figures, and explains why each decision aligns with COMP4702 theory.
+     * Use the following structure:
+
+       1. **Introduction & Philosophy** (tie to rubric; outline objectives).
+       2. **Dataset Specification & Preprocessing** (detailed EDA & cleaning steps).
+       3. **Modeling Techniques**
+
+          * Random Forest (Week 9).
+          * LightGBM (Week 9–10).
+          * Sparse GP (Week 11).
+       4. **Evaluation & Results** (metrics, diagnostic plots, CI).
+       5. **Discussion & Depth** (bias/variance, interpretability, uncertainty).
+       6. **Appendices** (hyperparameter grids, code snippets, assumptions).
+
+* **UI/UX Considerations**
+
+  * **Command‐Line–Driven**: All functionality via CLI—no interactive notebooks.
+  * **Clear File Organization**:
+
+    * `data/raw/assignTTSWING.csv` → `data/processed/processed.csv`
+    * `splits/` (JSON)
+    * `models/` (.pkl files)
+    * `results/` (plots + `metrics.csv`)
+    * `docs/sections/` (markdown templates)
+    * Top‐level `DOCUMENT.md` (final narrative)
+  * **Logging & Metadata**: Each script logs start/end timestamps, random seeds, and key parameter values to `logs/`.
+
+<PRD>  
 # Technical Architecture  
-## System Components
-- Python 3.11 environment with standard ML libraries
-- Core stack: pandas, numpy, scikit-learn, matplotlib/seaborn
-- **Python scripts only** (no Jupyter notebooks) for reproducible analysis
-- Git version control with structured documentation
-- Course lecture notes as primary theoretical reference
+- **Repository Structure**  
+  ```
+  COMP4702_ML_Assignment/
+  ├── data/
+  │   ├── raw/
+  │   │   └── assignTTSWING.csv
+  │   └── processed/
+  │       └── processed.csv
+  ├── splits/
+  │   ├── train.json
+  │   ├── val.json
+  │   └── test.json
+  ├── models/
+  │   ├── rf.pkl
+  │   ├── lgbm.pkl
+  │   └── gp.pkl
+  ├── results/
+  │   ├── confusion_matrix_rf.png
+  │   ├── shap_summary_lgbm.png
+  │   ├── gp_calibration.png
+  │   └── metrics.csv
+  ├── src/
+  │   ├── etl.py
+  │   ├── split_data.py
+  │   ├── train_rf.py
+  │   ├── train_lgbm.py
+  │   ├── train_gp.py
+  │   ├── evaluate.py
+  │   └── utils.py
+  ├── docs/
+  │   └── sections/
+  │       ├── 01_introduction.md
+  │       ├── 02_data_specification.md
+  │       ├── 03_models.md
+  │       ├── 04_evaluation.md
+  │       ├── 05_discussion.md
+  │       └── 06_appendix.md
+  ├── DOCUMENT.md
+  ├── environment.yml
+  └── README.md
+  ```
 
-## Data Models
-- assignTTSWING.csv: 97,355 samples × 51 features of tennis swing sensor data
-- Target: testmode (3 classes: 0=7.7%, 1=75.9%, 2=16.4%)
-- Preprocessed feature matrices with justified scaling and selection
-- Model configurations based on data characteristics and course principles
+* **System Components**
 
-## Development Environment
-- Structured Python modules demonstrating understanding through implementation
-- Comprehensive documentation connecting theory to practice
-- Clear separation between data processing, modeling, and evaluation
+  1. **ETL Module (`etl.py`)**
 
-# Development Roadmap  
-## Phase A: Data Understanding & Course Application ✅ COMPLETED
-- Load assignTTSWING.csv and analyze using course EDA principles
-- Identify data characteristics that drive model selection decisions
-- Apply course preprocessing concepts with theoretical justification
-- Document all decisions with explicit course concept connections
+     * Reads `data/raw/assignTTSWING.csv`.
+     * Converts IMU LSB → (g, °/s).
+     * Removes NaNs; filters outliers (‖a‖ > 30 g).
+     * Writes `data/processed/processed.csv`.
+  2. **Data Splitting Module (`split_data.py`)**
 
-## Phase B: Baseline Model Implementation (Logistic Regression)
-- **B1: Theoretical Foundation**
-  - Explain sigmoid function and maximum likelihood estimation
-  - Demonstrate understanding of linear decision boundaries
-  - Apply L1/L2 regularization with bias-variance tradeoff analysis
+     * Loads `processed.csv`.
+     * Uses `GroupKFold(n_splits=...)` stratified by `player_id`.
+     * Splits into 70 % train · 15 % val · 15 % test; saves JSON indices.
+  3. **Model Training Modules**
 
-- **B2: Data-Driven Implementation**
-  - Justify logistic regression choice based on data characteristics
-  - Implement proper feature scaling and selection
-  - Handle class imbalance using course-taught techniques
-  - Hyperparameter tuning with theoretical understanding
+     * **`train_rf.py`**:
 
-## Phase C: Advanced Model 1 (Random Forest)
-- **C1: Ensemble Theory Application**
-  - Explain bootstrap aggregating and random subspaces
-  - Demonstrate understanding of bias-variance tradeoff in ensembles
-  - Apply feature importance concepts from course
+       * Loads train/val splits.
+       * Applies `StandardScaler` to numeric features (Week 6).
+       * Uses Optuna + 5-fold `GroupKFold` to tune Random Forest.
+       * Trains final RF with best hyperparameters; serializes to `models/rf.pkl`.
+     * **`train_lgbm.py`**:
 
-- **C2: Data-Driven Justification**
-  - Justify Random Forest for sensor data non-linearity
-  - Implement proper hyperparameter tuning (n_estimators, max_depth)
-  - Analyze out-of-bag error and overfitting prevention
-  - Compare with baseline using course evaluation framework
+       * Loads train/val splits; reuses scaler from RF.
+       * Optuna + 5-fold `GroupKFold` to tune LightGBM (early stopping every 50 rounds).
+       * Computes SHAP values for interpretability; saves SHAP summary.
+       * Serializes model to `models/lgbm.pkl`.
+     * **`train_gp.py`**:
 
-## Phase D: Advanced Model 2 (Support Vector Machine)
-- **D1: Margin Theory Application**
-  - Explain maximum margin principle and support vectors
-  - Demonstrate understanding of kernel trick and feature mapping
-  - Apply regularization through C parameter with theoretical grounding
+       * Loads train/val splits; applies `StandardScaler`, then PCA (n\_components = 20).
+       * Constructs GPytorch model with RBF kernel and 1 000 inducing points.
+       * Optimizes ℓ & σ² via marginal likelihood (Week 11).
+       * Saves trained GP to `models/gp.pkl`.
+  4. **Evaluation Module (`evaluate.py`)**
 
-- **D2: Data-Driven Implementation**
-  - Justify SVM for high-dimensional sensor data
-  - Select appropriate kernel based on data characteristics
-  - Tune hyperparameters (C, gamma) with course understanding
-  - Analyze support vectors in sensor data context
+     * Loads `models/*.pkl` and `splits/test.json`.
+     * Applies identical preprocessing pipelines (scaler, PCA) to test set.
+     * For each model:
 
-## Phase E: Comparative Analysis & Course Integration
-- Apply course evaluation methodology for model comparison
-- Demonstrate understanding of model strengths/weaknesses
-- Justify final model selection using course principles
-- Connect all findings back to course concepts and lecture notes
+       * Computes predictions, class probabilities.
+       * Calculates Macro-F1, balanced accuracy, per-class precision/recall.
+       * Generates confusion matrix plot (matplotlib).
+       * For LightGBM: plots SHAP summary; for GP: reliability diagram & ECE.
+     * Compiles metrics into `results/metrics.csv`.
 
-## Phase F: Documentation & Understanding Demonstration
-- Comprehensive documentation showing course mastery
-- Explicit connections between implementations and course theory
-- Clear demonstration of when and why to use each technique
-- Final report showcasing understanding through practical application
+* **Data Models & Storage**
 
-# Model Selection Justification
+  * **Raw Data**: `assignTTSWING.csv` with columns `stroke_id`, `player_id`, six raw IMU axes, precomputed stats, `testmode`.
+  * **Processed Data**: Numeric columns converted to physical units; no NaNs; outliers removed.
+  * **JSON Splits**: Lists of integer indices for train/val/test.
+  * **Pickles**: Serialized Python objects containing fitted models, scalers, and PCA pipeline.
+  * **Results Directory**: Contains PNG artifacts and final metrics CSV.
 
-## Data Characteristics Driving Choices
-- **Tabular Sensor Data**: 46 numerical features from accelerometer/gyroscope
-- **High Dimensionality**: 51 features requiring careful selection and regularization
-- **Class Imbalance**: 7.7% minority class requiring special handling
-- **Mixed Scales**: Different sensor ranges requiring normalization
-- **Potential Non-linearity**: Sensor interactions likely complex
+* **Dependencies & Environment**
 
-## Course-Based Model Selection
+  * Managed via Conda environment `ml_assignment`.
+  * **Python Version**: Latest stable (≥ 3.10).
+  * **Primary Packages**:
 
-### Logistic Regression (Baseline)
-**Data Justification**: Linear relationships in sensor features, high dimensionality benefits from regularization, probabilistic output suitable for imbalanced classes
-**Course Concepts**: Linear classification, MLE, regularization, feature scaling
+    * pandas, numpy (data handling)
+    * scikit-learn (preprocessing, `GroupKFold`, PCA, RF)
+    * lightgbm (LGBMClassifier)
+    * torch, gpytorch (Sparse GP)
+    * shap (SHAP plots)
+    * optuna (hyperparameter optimization)
+    * matplotlib, seaborn (plots)
+    * joblib (serialization)
+    * json (split I/O)
+  * **environment.yml**: Lists the latest versions for reproducibility (no pinned minor versions).
 
-### Random Forest (Advanced)
-**Data Justification**: Sensor interactions likely non-linear, robust to outliers, built-in feature importance, handles class imbalance
-**Course Concepts**: Ensemble learning, bagging, bias-variance tradeoff, overfitting prevention
+# Development Roadmap
 
-### Support Vector Machine (Advanced)
-**Data Justification**: Effective with high dimensions, kernel methods for non-linearity, margin maximization for clear separation
-**Course Concepts**: Margin maximization, kernel trick, Lagrange multipliers, regularization
+*Organized by feature scope; no specific dates—each phase can be subdivided into tasks once scoped.*
 
-# Quality Standards and Expectations
+#### Phase 1 · Data Understanding & Preprocessing
 
-## Understanding Demonstration Requirements
-- **Theoretical Mastery**: Clear explanation of course concepts applied to each model
-- **Data-Driven Decisions**: All choices justified by data characteristics and course principles
-- **Implementation Quality**: Proper application of techniques showing understanding
-- **Course Integration**: Explicit connections to lecture material throughout
-- **Critical Analysis**: Understanding of model assumptions, limitations, and appropriate use cases
-- **Rubric compliance**: Regular review against ML_assignment_criteria.pdf
+* **Data Location Confirmed**: `data/raw/assignTTSWING.csv` (Dryad DOI 10.5061/dryad.0zpc8677f).
 
-## Documentation Standards
-- **Course Concept Mapping**: Every technique explicitly connected to course material
-- **Theoretical Justification**: Mathematical foundations explained with course references
-- **Data-Driven Reasoning**: Model choices justified by data characteristics
-- **Implementation Details**: Code demonstrating understanding of underlying concepts
-- **Comparative Analysis**: Models evaluated using course evaluation framework
+* **EDA & Feature Examination**
 
-# Explicitly Avoided Based on Academic Focus
+  * Generate univariate/bivariate distributions for raw IMU stats.
+  * Class‐balance analysis of `testmode` (0=“air swing”, 1=“full power”, 2=“stable”) (Week 3).
+  * Correlation heatmap to identify highly correlated features (Week 6: multicollinearity).
 
-## Experimental Complexity
-- **Rationale**: Focus on understanding demonstration over experimental breadth
-- **Alternative**: Deep analysis of three well-chosen models with theoretical grounding
+* **Implement ETL (`etl.py`)**
 
-## Exotic Libraries
-- **Rationale**: Demonstrate understanding with standard tools rather than advanced libraries
-- **Alternative**: Comprehensive analysis using scikit-learn and core ML stack
+  * Unit conversion (Week 3).
+  * Drop NaNs; remove outliers where ‖a‖ > 30 g (Week 5).
+  * Log counts: total rows, dropped rows, outliers flagged.
+  * Output to `data/processed/processed.csv`.
 
-## Jupyter Notebooks
-- **Rationale**: Python scripts provide better reproducibility and structure
-- **Alternative**: Well-documented Python modules showing implementation understanding
+* **Implement Data Splitting (`split_data.py`)**
 
-# Success Criteria
+  * Use `GroupKFold(n_splits=...)` to ensure no `player_id` leak across partitions (Week 4).
+  * Random seed `SEED = 123` for reproducibility.
+  * Save JSON: `train.json`, `val.json`, `test.json`.
 
-## Academic Objectives
-- **Course Mastery**: Demonstrate understanding of classification, ensemble learning, and kernel methods
-- **Theoretical Application**: Successfully apply course concepts to real problem
-- **Data-Driven Analysis**: Justify all decisions using data characteristics and course principles
-- **Implementation Quality**: Proper application of techniques with theoretical understanding
-- **Documentation Excellence**: Clear demonstration of course concept mastery
+#### Phase 2 · Baseline Model Implementation (Random Forest)
 
-## Technical Deliverables
-- **Three Model Analysis**: Logistic Regression, Random Forest, SVM with full theoretical grounding
-- **Comparative Study**: Models compared using course evaluation methodology
-- **Course Integration**: All work explicitly connected to COMP4702 lecture material
-- **Understanding Demonstration**: Clear evidence of when and why to use each technique
+* **Preprocessing**
 
-# Required Deliverables
-- SCOPE.md: Data analysis with course concept applications
-- MODELS.md: Logistic regression analysis with theoretical foundation
-- MODELS.md: Random Forest analysis with ensemble theory
-- MODELS.md: SVM analysis with margin theory and kernel methods
-- MODELS.md: Course-based model comparison and selection
-- Complete Python implementation demonstrating understanding
-- Final report showcasing course mastery through practical application 
+  * Fit `StandardScaler` on train set; persist to `models/scaler.pkl` (Week 6).
+  * One-hot encode any categorical metadata (if present) via `pd.get_dummies(drop_first=True)`.
+* **Training & Tuning (`train_rf.py`)**
+
+  * Define Optuna search:
+
+    * `n_estimators`, `max_depth`, `max_features`, `min_samples_leaf`.
+  * Employ 5-fold `GroupKFold` (Week 5 & 9).
+  * Log best parameters; train final RF on full train set.
+  * Save: `models/rf.pkl`.
+* **Diagnostics**
+
+  * Generate OOB error curve; produce validation curves for key hyperparameters (Week 9).
+  * Create confusion matrix on validation set; save to `results/confusion_matrix_rf.png`.
+  * Extract Gini importances; include top 10 features in `DOCUMENT.md`.
+
+#### Phase 3 · Advanced Model 1 (LightGBM)
+
+* **Preprocessing**
+
+  * Reuse `StandardScaler` and encoding from Phase 2.
+* **Training & Tuning (`train_lgbm.py`)**
+
+  * Define Optuna search: `num_leaves`, `learning_rate`, `max_depth`, `feature_fraction`, `n_estimators`.
+  * Early stopping every 50 rounds on validation set.
+  * Save best model: `models/lgbm.pkl`.
+* **Interpretability**
+
+  * Compute SHAP values on validation set; save summary plot to `results/shap_summary_lgbm.png`.
+  * Partial Dependence Plots on top 5 features.
+
+#### Phase 4 · Advanced Model 2 (Sparse Gaussian Process)
+
+* **Dimensionality Reduction**
+
+  * Fit PCA (n\_components = 20) on train set; save `models/pca.pkl` (Week 6).
+* **Training & Tuning (`train_gp.py`)**
+
+  * Preprocess train/val data: apply `scaler.pkl`, then `pca.pkl`.
+  * Build GPytorch model with RBF kernel; use k-means to select 1 000 inducing points.
+  * Optimize ℓ & σ² via marginal likelihood (Week 11).
+  * Save GP model: `models/gp.pkl`.
+* **Calibration & Uncertainty**
+
+  * Generate reliability diagram; compute ECE; save `results/gp_calibration.png`.
+
+#### Phase 5 · Evaluation & Artifact Collection
+
+* **Evaluation Script (`evaluate.py`)**
+
+  * Input: `models/rf.pkl`, `models/lgbm.pkl`, `models/gp.pkl` + `splits/test.json`.
+  * Preprocess test set: apply `scaler.pkl` → `pca.pkl` (for GP).
+  * For each model:
+
+    * Predict test labels; compute Macro-F1, balanced accuracy, per-class precision/recall.
+    * Save confusion matrix to `results/`.
+    * GP: plot reliability diagram; compute ECE.
+  * Collate all metrics into `results/metrics.csv`.
+
+* **DOCUMENT.md Assembly**
+
+  * Use markdown templates from `docs/sections/`.
+  * Sections must include:
+
+    1. **Introduction & Project Philosophy**
+
+       * State primary goals and course connections.
+    2. **Dataset Specification**
+
+       * Describe `assignTTSWING.csv`: size, features, target, unit conversions (Week 3).
+       * Data quality rules & filtering rationale (Week 5).
+       * Splitting protocol (Week 4).
+    3. **Methodology & Preprocessing**
+
+       * Detail ETL steps with code snippets (`etl.py`).
+       * Explain `GroupKFold` split logic (`split_data.py`), seed usage.
+    4. **Model Implementation & Tuning**
+
+       * **Random Forest**: hyperparameter grid, OOB error, feature importances (Week 9).
+       * **LightGBM**: boosting theory, Optuna workflow, SHAP (Week 9–10).
+       * **Sparse GP**: Bayesian GP fundamentals, PCA justification, inducing points, calibration (Week 11).
+    5. **Evaluation & Results**
+
+       * Present tables/plots: `metrics.csv`, confusion matrices, SHAP summaries, GP calibration.
+       * Include bootstrap CI results for Macro-F1 (Week 5).
+    6. **Discussion & Depth**
+
+       * Analyze bias–variance tradeoff for each model (Week 5).
+       * Interpretability comparison (SHAP vs. Gini vs. GP confidence).
+       * Practical considerations: compute time, scalability.
+    7. **Appendix**
+
+       * Hyperparameter search spaces (full Optuna configurations).
+       * Exact Conda `environment.yml`.
+       * Assumptions (e.g., Gaussian sensor noise σ\_IMU = 0.05 g).
+       * References: lecture notes and Dryad DOI.
+
+# Logical Dependency Chain
+
+1. **ETL (`etl.py`) → Splitting (`split_data.py`)**
+
+   * Must produce a clean `processed.csv` before generating consistent JSON splits.
+2. **Splitting → Baseline Model (`train_rf.py`)**
+
+   * Requires `train.json` & `val.json` and the fitted `StandardScaler`.
+3. **Baseline Model Analysis → LightGBM (`train_lgbm.py`)**
+
+   * RF’s insights (e.g., top features, distribution) can inform LightGBM’s hyperparameter ranges.
+4. **LightGBM Artifacts → Sparse GP (`train_gp.py`)**
+
+   * Use LightGBM’s feature importance to decide which features to retain in PCA (if needed).
+5. **Trained Models → Evaluation (`evaluate.py`)**
+
+   * Needs all three `.pkl` files and `test.json` to compute final metrics.
+6. **Evaluation Artifacts → DOCUMENT.md**
+
+   * Figures/metrics generated drive the narrative in each DOCUMENT.md section.
+
+# Risks and Mitigations
+
+* **Risk: Data Path Mismatch**
+
+  * *Issue*: Users might expect `TTSWING.csv` whereas project uses `assignTTSWING.csv`.
+  * *Mitigation*: Clearly document in `README.md` and `DOCUMENT.md` that `data/raw/assignTTSWING.csv` is the source.
+
+* **Risk: Environment Inconsistencies**
+
+  * *Issue*: Using “latest versions” could break reproducibility if future changes introduce incompatibilities.
+  * *Mitigation*: Provide an explicit `environment.yml` with major version constraints (e.g., `scikit-learn >=1.2, <2.0`) and instruct users to recreate `ml_assignment` via:
+
+    ```bash
+    conda env create -f environment.yml
+    ```
+
+* **Risk: Overfitting in Hyperparameter Tuning**
+
+  * *Issue*: Optuna may overfit to validation partitions.
+  * *Mitigation*:
+
+    * Use 5-fold `GroupKFold` with `player_id` held out.
+    * Validate on held-out validation set before final test.
+    * Report bootstrap CIs for Macro-F1 to quantify uncertainty.
+
+* **Risk: Computational Load (Sparse GP)**
+
+  * *Issue*: GP training may be slow on CPU only.
+  * *Mitigation*:
+
+    * Reduce PCA to 20 components.
+    * Fix inducing point count at 1 000.
+    * Monitor and log training time; consider early stopping if convergence stalls.
+
+* **Risk: Incomplete Documentation**
+
+  * *Issue*: Failing to link methods back to lecture content may lose marks.
+  * *Mitigation*: Enforce that each subsection in `DOCUMENT.md` includes explicit citations, e.g., “(Week 9: Ensemble Theory)” and a brief summary of how it applies.
+
+* **Risk: JSON Split File Corruption**
+
+  * *Issue*: Manual editing or file corruption may misalign splits.
+  * *Mitigation*:
+
+    * Version‐control `splits/` directory.
+    * Add a checksum check in `split_data.py` to validate JSON integrity before use.
+
+# Appendix
+
+* **Dataset Reference**
+
+  * Dryad DOI 10.5061/dryad.0zpc8677f → local path `data/raw/assignTTSWING.csv`.
+
+* **Conda Environment** (`environment.yml`)
+
+  ```yaml
+  name: ml_assignment
+  channels:
+    - defaults
+    - pytorch
+  dependencies:
+    - python>=3.10
+    - pandas
+    - numpy
+    - scikit-learn
+    - lightgbm
+    - pytorch
+    - gpytorch
+    - shap
+    - optuna
+    - matplotlib
+    - seaborn
+    - joblib
+    - pip
+  ```
+
+  *(Latest stable versions will be installed when this environment is created.)*
+
+* **Assumptions**
+
+  1. Sensor noise \~ N(0, 0.05² g).
+  2. No systematic domain shift across `player_id`.
+  3. Kernel hyperparameters for GP initialized via median heuristic (Week 11).
+
+* **Relevant Lecture Links**
+
+  * **Week 3**: “Feature Engineering for Time Series” (unit conversion & data cleaning).
+  * **Week 4**: “Group Cross‐Validation” (GroupKFold; imbalanced metrics).
+  * **Week 5**: “Bias–Variance & Bootstrap CI” (hyperparameter tuning & statistical confidence).
+  * **Week 6**: “Feature Scaling & PCA” (StandardScaler; dimensionality reduction).
+  * **Week 9**: “Ensemble Methods” (bagging, boosting; Random Forest & LightGBM basics).
+  * **Week 10**: “Interpretability” (SHAP, Partial Dependence).
+  * **Week 11**: “Gaussian Processes” (kernels, sparse approximations, calibration).
+
+* **How to Reproduce**
+
+  1. Clone repository.
+  2. Create Conda env:
+
+     ```bash
+     conda env create -f environment.yml
+     conda activate ml_assignment
+     ```
+  3. Ensure `data/raw/assignTTSWING.csv` is present.
+  4. Execute, in sequence:
+
+     ```bash
+     python src/etl.py --input data/raw/assignTTSWING.csv --output data/processed/processed.csv
+     python src/split_data.py --input data/processed/processed.csv --output_dir splits/
+     python src/train_rf.py --splits splits/train.json splits/val.json --output models/rf.pkl
+     python src/train_lgbm.py --splits splits/train.json splits/val.json --output models/lgbm.pkl
+     python src/train_gp.py --splits splits/train.json splits/val.json --output models/gp.pkl
+     python src/evaluate.py --models models/rf.pkl models/lgbm.pkl models/gp.pkl \
+       --splits splits/test.json --output_dir results/
+     ```
+  5. Populate `DOCUMENT.md` using templates under `docs/sections/` and artifact files in `results/`.
+
+</PRD>
