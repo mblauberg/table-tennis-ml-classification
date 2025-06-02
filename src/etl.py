@@ -1,297 +1,220 @@
 #!/usr/bin/env python3
 """
-Enhanced ETL Module for Table‑Tennis Swing IMU Dataset
------------------------------------------------------
-Implements the lecture‑aligned cleaning pipeline discussed in chat:
-* Unit conversion (LSB → physical units)
-* Median despike + 5th‑order Butterworth low‑pass filter
-* Linear interpolation for small numeric gaps before NaN drop
-* One‑hot encoding of categorical buckets (age, playYears, height, weight)
-* Strict outlier removal (‖a‖ > 16 g after scaling)
-* Deduplication and player‑ID retention for leakage‑free CV
-The resulting CSV is ready for GroupStratifiedKFold + scikit‑learn Pipelines.
+Enhanced Data Preprocessing Pipeline
+COMP4702 Assignment - Table Tennis Swing Classification
+
+Simple preprocessing pipeline with 5 key steps:
+1. Removing missing and irrelevant data
+2. Converting to physical units (g, °/s, rad/s) 
+3. Encoding categorical variables
+4. Feature scaling with StandardScaler
+5. Data validation
 """
 
-import argparse
-import logging
-from pathlib import Path
-import sys
-
-import numpy as np
 import pandas as pd
-from scipy.signal import butter, filtfilt
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+import json
+import warnings
+warnings.filterwarnings('ignore')
 
-###############################################################################
-# Logging helpers
-###############################################################################
+# Unit conversion factors
+ACC_CONVERSION = 2.0 / 32768.0  # ±2g range to m/s²
+GYRO_CONVERSION = 250.0 / 32768.0  # ±250°/s range to °/s
+GYRO_TO_RAD = np.pi / 180.0  # Convert °/s to rad/s
+G_TO_MS2 = 9.81  # Standard gravity
 
-def setup_logging(log_level: str = "INFO") -> logging.Logger:
-    """Create logs directory (if missing) and configure root logger."""
-    Path("logs").mkdir(exist_ok=True)
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s | %(levelname)s | %(message)s",
-        handlers=[
-            logging.FileHandler("logs/etl.log"),
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
-    return logging.getLogger(__name__)
-
-###############################################################################
-# IMU helpers
-###############################################################################
-
-ACCEL_COLS = [
-    "ax_mean",
-    "ay_mean",
-    "az_mean",
-    "ax_var",
-    "ay_var",
-    "az_var",
-    "ax_rms",
-    "ay_rms",
-    "az_rms",
-    "a_max",
-    "a_mean",
-    "a_min",
-]
-
-GYRO_COLS = [
-    "gx_mean",
-    "gy_mean",
-    "gz_mean",
-    "gx_var",
-    "gy_var",
-    "gz_var",
-    "gx_rms",
-    "gy_rms",
-    "gz_rms",
-    "g_max",
-    "g_mean",
-    "g_min",
-]
-
-IMU_COLS = ACCEL_COLS + GYRO_COLS
-
-
-def convert_imu_units(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
-    """Convert raw 16‑bit LSB values to g and °/s."""
-    logger.info("Converting IMU units to physical scales …")
-
-    # ±2 g range → scale 2/32768
-    for col in ACCEL_COLS:
+def remove_missing_and_irrelevant_data(df):
+    """Step 1: Remove missing data and irrelevant columns."""
+    print("1. Removing missing and irrelevant data:")
+    
+    # Drop rows containing "???" in any categorical column
+    categorical_cols = ['age', 'playYears', 'height', 'weight']
+    initial_rows = len(df)
+    
+    for col in categorical_cols:
         if col in df.columns:
-            df[col] = df[col].astype(float) * (2.0 / 32768.0)
+            df = df[df[col] != '???']
+    
+    rows_dropped = initial_rows - len(df)
+    print(f"  Dropped {rows_dropped} rows containing '???' values")
+    
+    # Remove irrelevant columns
+    columns_to_drop = ['date', 'teststage', 'count', 'newvar1', 'newvar2', 'newvar3', 'newvar4']
+    dropped_cols = [col for col in columns_to_drop if col in df.columns]
+    df = df.drop(columns=dropped_cols)
+    print(f"  Removed columns: {dropped_cols}")
+    
+    # Remove perfect duplicates
+    if 'holdRacketHanded' in df.columns and 'handedness' in df.columns:
+        if df['holdRacketHanded'].equals(df['handedness']):
+            df = df.drop(columns=['holdRacketHanded'])
+            print(f"  Removed duplicate column: holdRacketHanded")
+    
+    print(f"  Shape after cleaning: {df.shape}")
+    return df
 
-    # ±250 °/s range → scale 250/32768
-    for col in GYRO_COLS:
+def convert_to_physical_units(df):
+    """Step 2: Convert sensor values from LSB to physical units."""
+    print("2. Converting to physical units:")
+    
+    # Identify sensor columns
+    acc_columns = [col for col in df.columns if col.startswith(('ax_', 'ay_', 'az_', 'a_'))]
+    gyro_columns = [col for col in df.columns if col.startswith(('gx_', 'gy_', 'gz_', 'g_'))]
+    
+    # Convert accelerometer data (LSB → g → m/s²)
+    for col in acc_columns:
         if col in df.columns:
-            df[col] = df[col].astype(float) * (250.0 / 32768.0)
-
-    return df
-
-###############################################################################
-# Filtering & smoothing
-###############################################################################
-
-
-def median_despike(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-    """Replace single‑frame spikes with 3‑point rolling median."""
-    for col in cols:
+            df[col] = df[col] * ACC_CONVERSION * G_TO_MS2
+    
+    # Convert gyroscope data (LSB → °/s → rad/s)
+    for col in gyro_columns:
         if col in df.columns:
-            df[col] = (
-                df[col]
-                .rolling(window=3, center=True, min_periods=1)
-                .median()
-                .fillna(method="bfill")
-                .fillna(method="ffill")
-            )
+            df[col] = df[col] * GYRO_CONVERSION * GYRO_TO_RAD
+    
+    print(f"  ✓ Accelerometer: ±2.0g → ±{2.0 * G_TO_MS2:.1f} m/s²")
+    print(f"  ✓ Gyroscope: ±250.0°/s → ±{250.0 * GYRO_TO_RAD:.2f} rad/s")
+    
     return df
 
-
-def butter_lowpass(data: np.ndarray, fs: float = 200.0, cutoff: float = 20.0, order: int = 5) -> np.ndarray:
-    """Return low‑pass filtered copy of 1‑D vector using zero‑phase filtfilt."""
-    b, a = butter(order, cutoff / (0.5 * fs), btype="low", analog=False)
-    return filtfilt(b, a, data, method="gust")
-
-
-def smooth_imu(df: pd.DataFrame, cols: list[str], logger: logging.Logger) -> pd.DataFrame:
-    logger.info("Applying median despike + Butterworth LPF …")
-    df = median_despike(df, cols)
-    for col in cols:
+def encode_categorical_variables(df):
+    """Step 3: Encode categorical variables."""
+    print("3. Encoding categorical variables:")
+    
+    # One-hot encode demographic buckets
+    categorical_cols = ['age', 'playYears', 'height', 'weight']
+    encoded_columns = []
+    
+    for col in categorical_cols:
         if col in df.columns:
-            df[col] = butter_lowpass(df[col].values)
+            # Create dummy variables (drop_first=True to avoid multicollinearity)
+            dummies = pd.get_dummies(df[col], prefix=col, drop_first=True)
+            df = pd.concat([df, dummies], axis=1)
+            encoded_columns.extend(dummies.columns.tolist())
+            df = df.drop(columns=[col])
+            print(f"  {col}: One-hot encoded → {len(dummies.columns)} features")
+    
+    # Keep binary variables as 0/1
+    binary_cols = ['gender', 'handedness']
+    for col in binary_cols:
+        if col in df.columns:
+            unique_vals = sorted(df[col].unique())
+            print(f"  {col}: Kept as binary (values: {unique_vals})")
+    
+    print(f"  ✓ Total new dummy variables: {len(encoded_columns)}")
+    return df, encoded_columns
+
+def apply_feature_scaling(df, encoded_columns):
+    """Step 4: Apply StandardScaler to numeric features."""
+    print("4. Applying feature scaling:")
+    
+    # Identify numeric sensor features (exclude categorical, binary, and ID columns)
+    exclude_cols = ['id', 'testmode'] + encoded_columns + ['gender', 'handedness']
+    if 'holdRacketHanded' in df.columns:
+        exclude_cols.append('holdRacketHanded')
+    
+    numeric_features = [col for col in df.columns if col not in exclude_cols]
+    
+    # Apply StandardScaler to numeric features
+    scaler = StandardScaler()
+    if numeric_features:
+        df[numeric_features] = scaler.fit_transform(df[numeric_features])
+        print(f"  ✓ Standardized {len(numeric_features)} numeric features")
+        print(f"  ✓ One-hot and binary features kept in {{0,1}}")
+    
+    return df, scaler, numeric_features
+
+def validate_preprocessing_quality(df_original, df_processed):
+    """Step 5: Validate the preprocessing quality."""
+    print("\n" + "=" * 50)
+    print("PREPROCESSING QUALITY VALIDATION")
+    print("=" * 50)
+    
+    # Check shape changes
+    print(f"Shape change: {df_original.shape} → {df_processed.shape}")
+    
+    # Check target variable distribution
+    original_classes = df_original['testmode'].value_counts().sort_index()
+    processed_classes = df_processed['testmode'].value_counts().sort_index()
+    
+    print(f"\nTarget variable distribution:")
+    for class_val in [0, 1, 2]:
+        original_count = original_classes.get(class_val, 0)
+        processed_count = processed_classes.get(class_val, 0)
+        print(f"  Class {class_val}: {original_count} → {processed_count}")
+    
+    # Check for missing values
+    missing_count = df_processed.isnull().sum().sum()
+    print(f"\nMissing values in processed data: {missing_count}")
+    
+    # Check ID preservation for group-aware splitting
+    original_players = df_original['id'].nunique()
+    processed_players = df_processed['id'].nunique()
+    print(f"Unique players preserved: {original_players} → {processed_players}")
+    
+    print(f"Total features: {len(df_processed.columns) - 2}")  # Exclude id and testmode
+    return True
+
+def preprocess_data(input_path='data/raw/assignTTSWING.csv', 
+                   output_path='data/processed/assignTTSWING_processed.csv'):
+    """Apply the complete preprocessing pipeline."""
+    print("=" * 60)
+    print("ENHANCED DATA PREPROCESSING PIPELINE")
+    print("=" * 60)
+    
+    # Load raw data
+    df_original = pd.read_csv(input_path)
+    print(f"Loaded dataset: {df_original.shape}")
+    df = df_original.copy()
+    
+    # Step 1: Remove missing and irrelevant data
+    df = remove_missing_and_irrelevant_data(df)
+    
+    # Step 2: Convert to physical units
+    df = convert_to_physical_units(df)
+    
+    # Step 3: Encode categorical variables
+    df, encoded_cols = encode_categorical_variables(df)
+    
+    # Step 4: Apply feature scaling
+    df, scaler, numeric_features = apply_feature_scaling(df, encoded_cols)
+    
+    # Step 5: Validate preprocessing quality
+    validate_preprocessing_quality(df_original, df)
+    
+    # Save processed dataset
+    df.to_csv(output_path, index=False)
+    print(f"\n✓ Processed dataset saved to: {output_path}")
+    
+    # Save preprocessing info
+    preprocessing_info = {
+        'original_shape': df_original.shape,
+        'processed_shape': df.shape,
+        'acc_conversion_factor': ACC_CONVERSION,
+        'gyro_conversion_factor': GYRO_CONVERSION,
+        'gyro_to_rad_factor': GYRO_TO_RAD,
+        'numeric_features': numeric_features,
+        'scaler_mean': scaler.mean_.tolist() if scaler.mean_ is not None else None,
+        'scaler_scale': scaler.scale_.tolist() if scaler.scale_ is not None else None
+    }
+    
+    info_path = output_path.replace('.csv', '_info.json')
+    with open(info_path, 'w') as f:
+        json.dump(preprocessing_info, f, indent=2)
+    print(f"✓ Preprocessing info saved to: {info_path}")
+    
+    print("\n" + "=" * 60)
+    print("PREPROCESSING COMPLETED SUCCESSFULLY")
+    print("=" * 60)
+    print("Next steps:")
+    print("- Run split_data.py for group-aware train/test splitting")
+    print("- Use individual model training files for correlation-based feature pruning")
+    
     return df
-
-###############################################################################
-# Data quality helpers
-###############################################################################
-
-
-def interpolate_numeric(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
-    """Linearly interpolate isolated numeric NaNs then return df."""
-    num_cols = df.select_dtypes(include=[np.number]).columns
-    n_before = df[num_cols].isna().sum().sum()
-    df[num_cols] = df[num_cols].interpolate(limit_direction="both")
-    n_after = df[num_cols].isna().sum().sum()
-    logger.info(f"Interpolated {int(n_before - n_after)} numeric NaNs (remaining: {int(n_after)})")
-    return df
-
-
-def filter_outliers(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
-    """Drop rows where acceleration magnitude exceeds sensor range (16 g)."""
-    logger.info("Filtering extreme outliers (‖a‖ > 16 g) …")
-
-    if {"ax_mean", "ay_mean", "az_mean"}.issubset(df.columns):
-        accel_mag = np.sqrt(df["ax_mean"] ** 2 + df["ay_mean"] ** 2 + df["az_mean"] ** 2)
-    else:
-        logger.warning("Acceleration components not all present; skipping outlier filter.")
-        return df
-
-    mask = accel_mag <= 16.0
-    removed = (~mask).sum()
-    logger.info(f"Removed {removed} rows exceeding ±16 g sensor range")
-    return df[mask].copy()
-
-###############################################################################
-# Categorical handling
-###############################################################################
-
-CAT_COLS = ["age", "playYears", "height", "weight"]
-
-
-def drop_unknown_categories(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
-    """Remove rows containing the placeholder '???' in any categorical bucket."""
-    if not set(CAT_COLS).intersection(df.columns):
-        return df
-
-    mask_no_unknown = (df[CAT_COLS] != "???").all(axis=1)
-    removed = (~mask_no_unknown).sum()
-    logger.info(f"Dropped {removed} rows containing '???' categorical values")
-    return df[mask_no_unknown].copy()
-
-
-def one_hot_encode(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
-    """One‑hot encode the four bucketised categorical columns."""
-    present = [c for c in CAT_COLS if c in df.columns]
-    if not present:
-        return df
-    logger.info(f"One‑hot encoding categorical columns: {present}")
-    df = pd.get_dummies(df, columns=present, prefix=present, drop_first=True)
-    return df
-
-###############################################################################
-# Column house‑keeping
-###############################################################################
-
-DROP_COLS = [
-    "date",  # temporal metadata
-    "fileindex",
-    "teststage",
-    "count",
-]
-
-
-def remove_unnecessary_columns(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
-    cols_to_drop = [c for c in DROP_COLS if c in df.columns]
-    if cols_to_drop:
-        logger.info(f"Dropping non‑predictive columns: {cols_to_drop}")
-        df = df.drop(columns=cols_to_drop)
-    return df
-
-###############################################################################
-# Validation helpers
-###############################################################################
-
-def validate_target(df: pd.DataFrame, logger: logging.Logger) -> None:
-    if "testmode" not in df.columns:
-        raise ValueError("Target column 'testmode' missing after cleaning")
-    expected = {0, 1, 2}
-    found = set(df["testmode"].unique())
-    if not found.issubset(expected):
-        logger.warning(f"Unexpected class labels found: {found - expected}")
-    logger.info("Target distribution: %s", df["testmode"].value_counts().to_dict())
-
-
-def final_checks(df: pd.DataFrame, logger: logging.Logger) -> None:
-    nan_total = df.isna().sum().sum()
-    logger.info(f"Remaining NaNs in dataset: {nan_total}")
-    if nan_total:
-        logger.warning("Consider additional imputation before modelling.")
-
-###############################################################################
-# Main pipeline
-###############################################################################
-
-
-def process_data(input_csv: Path, output_csv: Path, logger: logging.Logger) -> None:
-    logger.info("Loading raw CSV …")
-    df = pd.read_csv(input_csv, low_memory=False)
-
-    logger.info(f"Initial shape: {df.shape}")
-
-    # Drop exact duplicates early
-    before_dupes = len(df)
-    df = df.drop_duplicates(ignore_index=True)
-    logger.info(f"Dropped {before_dupes - len(df)} duplicate rows")
-
-    # Convert + smooth IMU signals
-    df = convert_imu_units(df, logger)
-    df = smooth_imu(df, IMU_COLS, logger)
-
-    # Interpolate numeric gaps then drop remaining NaNs later
-    df = interpolate_numeric(df, logger)
-
-    # Categorical cleaning & encoding
-    df = drop_unknown_categories(df, logger)
-    df = one_hot_encode(df, logger)
-
-    # Remove leftover NaNs (now mostly categorical)
-    before_nan = len(df)
-    df = df.dropna()
-    logger.info(f"Dropped {before_nan - len(df)} rows still containing NaNs after interpolation")
-
-    # Outlier filter
-    df = filter_outliers(df, logger)
-
-    # House‑keeping columns
-    df = remove_unnecessary_columns(df, logger)
-
-    # Validation
-    validate_target(df, logger)
-    final_checks(df, logger)
-
-    # Ensure output dir exists
-    output_csv.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(output_csv, index=False)
-    logger.info(f"Saved cleaned dataset → {output_csv} (rows: {len(df)}, cols: {df.shape[1]})")
-
-###############################################################################
-# CLI
-###############################################################################
-
 
 def main():
-    parser = argparse.ArgumentParser(description="Clean table‑tennis IMU dataset for ML")
-    parser.add_argument("--input", required=True, help="Path to raw CSV")
-    parser.add_argument("--output", required=True, help="Path for cleaned CSV")
-    parser.add_argument(
-        "--log‑level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
-    )
-    args = parser.parse_args()
-
-    logger = setup_logging(getattr(args, 'log‑level'))
-
-    input_path = Path(args.input)
-    output_path = Path(args.output)
-
-    if not input_path.exists():
-        logger.error("Input file not found → %s", input_path)
-        sys.exit(1)
-
-    process_data(input_path, output_path, logger)
-
+    """Main preprocessing function."""
+    preprocess_data()
 
 if __name__ == "__main__":
     main()

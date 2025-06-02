@@ -1,144 +1,82 @@
 #!/usr/bin/env python3
 """
-Group‑Stratified Train/Val/Test Splitter
-========================================
-COMP4702 ‑ Machine Learning Assignment
+Group-Aware Data Splitting
+COMP4702 Assignment - Table Tennis Swing Classification
 
-This script creates **leakage‑proof** train / validation / test indices for the
-Table‑Tennis Swing dataset.  It follows Week 5 lecture guidance:
-
-* **Group isolation** – swings from the same player (`id`) never appear in
-  multiple splits (prevents overly‑optimistic CV).
-* **Class balance** – uses *StratifiedGroupKFold* so that each split has a
-  similar `testmode` distribution (≈ stratified per player bucket).
-* **Deterministic shuffling** – seeded RNG for reproducibility (Week 4 best‑
-  practice).
-
-Output: three JSON files (`train.json`, `val.json`, `test.json`) containing row
-indices for direct use with a modelling pipeline.
+Simple group-aware splitting to prevent data leakage.
+Uses player IDs to ensure no player appears in both training and test sets.
 """
 
-import argparse
-import json
-import logging
-from pathlib import Path
-
-import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedGroupKFold
+import numpy as np
+from sklearn.model_selection import GroupShuffleSplit
+import json
+import os
 
-# ----------------------------------------------------------------------------
-# Config & helpers
-# ----------------------------------------------------------------------------
-LOG_FMT = "%(asctime)s | %(levelname)-8s | %(message)s"
-logging.basicConfig(level=logging.INFO, format=LOG_FMT)
-logger = logging.getLogger(__name__)
+def create_group_aware_splits(data_path='data/processed/assignTTSWING_processed.csv', 
+                             test_size=0.20, random_state=42):
+    """Create group-aware train/test splits and save indices."""
+    
+    # Load processed data
+    df = pd.read_csv(data_path)
+    print(f"Loaded dataset: {df.shape}")
+    print(f"Unique players: {df['id'].nunique()}")
+    print(f"Class distribution: {df['testmode'].value_counts().sort_index().to_dict()}")
+    
+    # Prepare for splitting
+    X = df.drop(['testmode'], axis=1)
+    y = df['testmode']
+    groups = df['id']  # Player IDs for grouping
+    
+    # Create train/test split ensuring no player overlap
+    splitter = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
+    train_idx, test_idx = next(splitter.split(X, y, groups))
+    
+    # Quick validation
+    train_players = set(groups.iloc[train_idx])
+    test_players = set(groups.iloc[test_idx])
+    assert len(train_players.intersection(test_players)) == 0, "Player overlap detected!"
+    
+    print(f"Training: {len(train_idx)} samples, {len(train_players)} players")
+    print(f"Test: {len(test_idx)} samples, {len(test_players)} players")
+    
+    # Save splits
+    os.makedirs('splits', exist_ok=True)
+    
+    with open('splits/train_indices.json', 'w') as f:
+        json.dump(train_idx.tolist(), f)
+    
+    with open('splits/test_indices.json', 'w') as f:
+        json.dump(test_idx.tolist(), f)
+    
+    # For validation split used in some train files
+    val_size = int(len(train_idx) * 0.2)  # 20% of training data
+    np.random.seed(random_state)
+    val_indices = np.random.choice(train_idx, val_size, replace=False)
+    train_only_indices = np.setdiff1d(train_idx, val_indices)
+    
+    with open('splits/val_indices.json', 'w') as f:
+        json.dump(val_indices.tolist(), f)
+    
+    with open('splits/train_only_indices.json', 'w') as f:
+        json.dump(train_only_indices.tolist(), f)
+    
+    print("✓ Split indices saved to splits/ directory")
+    return train_idx, test_idx, val_indices
 
-SEED = 123  # global default – override via CLI if desired
-
-
-def first_two_folds_sgkf(df, group_col: str, target_col: str, seed: int = SEED):
-    """Return indices for train / val / test using two SGKF rounds.
-
-    1. **Round 1** – SGKF with *n_splits=5*  → pick one fold as *test*,
-       concatenate the remaining four folds (*temp*).
-    2. **Round 2** – SGKF on *temp* (n_splits=4) → pick one fold as *val*,
-       remainder becomes *train*.
-
-    Ratios ≈ 0.6 / 0.2 / 0.2, close to the 0.7 / 0.15 / 0.15 guideline but with
-    perfect group stratification.
-    """
-
-    sgkf5 = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-    y = df[target_col]
-    groups = df[group_col]
-
-    # ── Round 1: choose the first yielded split as TEST ──────────────────────
-    train_val_idx, test_idx = next(sgkf5.split(df, y, groups))
-    df_temp = df.iloc[train_val_idx].copy()
-
-    # ── Round 2 on the temp set for VAL ─────────────────────────────────────
-    sgkf4 = StratifiedGroupKFold(n_splits=4, shuffle=True, random_state=seed)
-    y_temp = df_temp[target_col]
-    groups_temp = df_temp[group_col]
-    train_idx_rel, val_idx_rel = next(sgkf4.split(df_temp, y_temp, groups_temp))
-
-    # Map relative indices back to original dataframe
-    train_idx = df_temp.iloc[train_idx_rel].index.to_numpy()
-    val_idx = df_temp.iloc[val_idx_rel].index.to_numpy()
-
-    return {
-        "train": train_idx.tolist(),
-        "val": val_idx.tolist(),
-        "test": test_idx.tolist(),
-    }
-
-
-def save_splits(splits: dict, output_dir: Path):
-    output_dir.mkdir(parents=True, exist_ok=True)
-    for name, idx in splits.items():
-        path = output_dir / f"{name}.json"
-        with open(path, "w") as fp:
-            json.dump(idx, fp, indent=2)
-        logger.info(f"Saved {len(idx):,} indices → {path}")
-
-
-# ----------------------------------------------------------------------------
-# CLI
-# ----------------------------------------------------------------------------
-
-def parse_args():
-    p = argparse.ArgumentParser(
-        description="Create group‑stratified train/val/test splits for IMU data",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    p.add_argument("--input", required=True, help="Processed CSV (after ETL)")
-    p.add_argument("--output_dir", required=True, help="Directory for JSON splits")
-    p.add_argument("--group_col", default="id", help="Player/group column")
-    p.add_argument("--target_col", default="testmode", help="Target label column")
-    p.add_argument("--seed", type=int, default=SEED, help="RNG seed")
-    return p.parse_args()
-
-
-# ----------------------------------------------------------------------------
-# Main driver
-# ----------------------------------------------------------------------------
+def load_splits():
+    """Load saved split indices."""
+    with open('splits/train_indices.json', 'r') as f:
+        train_idx = np.array(json.load(f))
+    with open('splits/test_indices.json', 'r') as f:
+        test_idx = np.array(json.load(f))
+    return train_idx, test_idx
 
 def main():
-    args = parse_args()
-
-    # reproducible randomness
-    rng = np.random.default_rng(args.seed)
-    np.random.seed(args.seed)
-
-    # ── Load data ───────────────────────────────────────────────────────────
-    df = pd.read_csv(args.input)
-    logger.info(f"Loaded {len(df):,} rows from {args.input}")
-
-    # Basic sanity
-    for col in (args.group_col, args.target_col):
-        if col not in df.columns:
-            raise ValueError(f"Column '{col}' not found in data")
-
-    # ── Create splits ───────────────────────────────────────────────────────
-    splits = first_two_folds_sgkf(
-        df, group_col=args.group_col, target_col=args.target_col, seed=args.seed
-    )
-
-    # quick diagnostics
-    for split, idx in splits.items():
-        sub = df.loc[idx, args.target_col]
-        dist = sub.value_counts().sort_index()
-        logger.info(
-            f"{split.capitalize():5}  |  n={len(idx):5,}  |  class dist: "
-            + ", ".join([f"{cls}:{cnt}" for cls, cnt in dist.items()])
-        )
-
-    # ── Persist ─────────────────────────────────────────────────────────────
-    save_splits(splits, Path(args.output_dir))
-
-    logger.info("✓ Splits created with group‑aware stratification")
-
+    """Create group-aware data splits."""
+    print("Creating group-aware train/test splits...")
+    train_idx, test_idx, val_idx = create_group_aware_splits()
+    print("✓ Data splitting completed")
 
 if __name__ == "__main__":
     main()
