@@ -1,42 +1,43 @@
+# Data files - raw and processed datasets
+data/
+!data/.gitkeep
+
+# Results and outputs - analysis results, models, plots
+results/
+!results/.gitkeep
+
+# Model files
+*.pkl
+*.joblib
+*.h5
+*.hdf5
+*.model
+*.bin
+
+# Large text model outputs
+*.txt
+!requirements.txt
+!README.txt
+
+# Reports and documentation (optional - uncomment if you want to track reports)
+*.pdf
+!docs/*.pdf
+
+# Splits and indices
+splits/
+
 # Logs
-logs
+logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-dev-debug.log
 
-# Dependency directories
-node_modules/
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
 
-# Environment variables
-.env
-
-# Editor directories and files
-.idea
-.vscode
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# OS specific
-.DS_Store
-
-# Task files
-tasks.json
-# Keep tasks/ directory structure
-
-# Byte-compiled / optimized / DLL files
+# Python cache and compiled files
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -50,88 +51,13 @@ parts/
 sdist/
 var/
 wheels/
-pip-wheel-metadata/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
+# Virtual environments
 .env
 .venv
 env/
@@ -140,59 +66,14 @@ ENV/
 env.bak/
 venv.bak/
 
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# ML specific - keep essential model artifacts for reproducibility
-*.h5
-*.hdf5
-# Explicitly keep trained models in results directories (academic project)
-!results/**/logistic_model.pkl
-!results/**/lightgbm_model.txt
-!results/**/scaler.pkl
-# Keep academic project artifacts
-!results/**/*.json
-!results/**/*.csv
-!results/**/*.png
-checkpoints/
-logs/
-tensorboard_logs/
-wandb/
-
-# Data files - preserve project structure
-# Keep data/ directory structure and key files
-# Keep assignTTSWING.csv and processed files
-# Ignore other data formats
-*.tsv
-*.parquet
-*.feather
-# Don't ignore our specific data directories
-# data/  # Commented out to preserve our data structure
-# datasets/  # Commented out
-
-# IDE specific
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS specific
+# OS files
 .DS_Store
 .DS_Store?
 ._*
@@ -203,20 +84,15 @@ Thumbs.db
 
 # Temporary files
 *.tmp
+*.temp
+*.bak
+*.backup
 
-# Project specific - keep important files
-# Keep assignTTSWING.csv in data/raw/
-# Keep processed files in data/processed/
-# Keep generated figures in figures/
-# Keep documentation in docs/
-# Keep source code in src/
-# Keep task management files
+# Large files (anything over 50MB)
+*.[0-9][0-9][0-9]MB*
+*.[0-9]GB*
 
-# PyTorch models
-*.pth
-*.pt
-
-# Large numpy arrays (keep essential ones)
-*.npz
-!results/**/predictions.npz
-!results/**/training_data.npz
+# Specific large evaluation files
+*evaluation_metrics.json
+*trial_data.json
+*trials.csv
