@@ -158,20 +158,17 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# ML specific
-*.pkl
-*.pickle
-*.joblib
+# ML specific - keep essential model artifacts for reproducibility
 *.h5
 *.hdf5
-*.model
-# Keep models/ directory structure but ignore model files
-models/*.pkl
-models/*.pickle
-models/*.joblib
-models/*.h5
-models/*.hdf5
-models/*.model
+# Explicitly keep trained models in results directories (academic project)
+!results/**/logistic_model.pkl
+!results/**/lightgbm_model.txt
+!results/**/scaler.pkl
+# Keep academic project artifacts
+!results/**/*.json
+!results/**/*.csv
+!results/**/*.png
 checkpoints/
 logs/
 tensorboard_logs/
@@ -215,5 +212,11 @@ Thumbs.db
 # Keep source code in src/
 # Keep task management files
 
-# Added by Claude Task Master
-tasks/ 
+# PyTorch models
+*.pth
+*.pt
+
+# Large numpy arrays (keep essential ones)
+*.npz
+!results/**/predictions.npz
+!results/**/training_data.npz

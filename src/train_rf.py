@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 COMP4702 Assignment: Random Forest for Table Tennis Swing Classification
-Simplified implementation for assignment use.
 """
 
 import pandas as pd
@@ -23,7 +22,7 @@ np.random.seed(RANDOM_SEED)
 
 DATA_PATH = "data/processed/assignTTSWING_processed.csv"
 TRAIN_SPLIT_PATH = "splits/train_indices.json" 
-VAL_SPLIT_PATH = "splits/val_indices.json"
+TEST_SPLIT_PATH = "splits/test_indices.json"
 OUTPUT_DIR = Path("results/random_forest")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -34,8 +33,8 @@ def load_data():
     
     with open(TRAIN_SPLIT_PATH, 'r') as f:
         train_indices = json.load(f)
-    with open(VAL_SPLIT_PATH, 'r') as f:
-        val_indices = json.load(f)
+    with open(TEST_SPLIT_PATH, 'r') as f:
+        test_indices = json.load(f)
     
     # Get features (exclude id and target)
     exclude_cols = ['id', 'testmode']
@@ -50,13 +49,13 @@ def load_data():
     X_train = X.iloc[train_indices]
     y_train = y.iloc[train_indices]
     groups_train = groups.iloc[train_indices]
-    X_val = X.iloc[val_indices]
-    y_val = y.iloc[val_indices]
+    X_test = X.iloc[test_indices]  # This is test data for final evaluation
+    y_test = y.iloc[test_indices]
     
-    print(f"Training: {X_train.shape}, Validation: {X_val.shape}")
-    return X_train, y_train, groups_train, X_val, y_val, feature_cols
+    print(f"Training: {X_train.shape}, Test: {X_test.shape}")
+    return X_train, y_train, groups_train, X_test, y_test, feature_cols
 
-def drop_collinear_features_rf(X_train, X_val, feature_cols):
+def drop_collinear_features_rf(X_train, X_test, feature_cols):
     """Drop collinear features for RF (|r| > 0.95 threshold)"""
     print("Dropping collinear features for Random Forest...")
     
@@ -71,33 +70,55 @@ def drop_collinear_features_rf(X_train, X_val, feature_cols):
     
     print(f"Dropped {len(existing_drops)} features, kept {len(filtered_features)}")
     
-    return X_train[filtered_features], X_val[filtered_features], filtered_features
+    return X_train[filtered_features], X_test[filtered_features], filtered_features
 
 def optimize_hyperparameters(X_train, y_train, groups_train):
-    """Optimize RF hyperparameters using Optuna"""
+    """Optimize RF hyperparameters using Optuna with cross-validation"""
     print("Optimizing hyperparameters...")
     
     def objective(trial):
+        # Define hyperparameter search space based on Random Forest theory
         params = {
+            # Number of trees: more trees reduce variance but increase computation
             'n_estimators': trial.suggest_int('n_estimators', 100, 400),
+            
+            # Tree depth: None allows unlimited depth, bounded values prevent overfitting
             'max_depth': trial.suggest_categorical('max_depth', [None] + list(range(5, 13))),
+            
+            # Feature sampling: 'sqrt' is common default, fractions control randomness
             'max_features': trial.suggest_categorical('max_features', ['sqrt', 0.5, 0.7]),
+            
+            # Leaf size: larger values prevent overfitting to noise
             'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 8),
+            
+            # Enable bootstrap sampling (core of bagging ensemble)
             'bootstrap': True,
+            
+            # Enable out-of-bag scoring for internal validation
             'oob_score': True,
+            
+            # Fixed random seed for reproducible results
             'random_state': RANDOM_SEED,
+            
+            # Use all CPU cores for parallel training
             'n_jobs': -1
         }
         
+        # Create Random Forest with suggested hyperparameters
         rf = RandomForestClassifier(**params)
+        
+        # Group-aware cross-validation prevents data leakage
+        # Ensures no player appears in both training and validation folds
         group_kfold = GroupKFold(n_splits=5)
         
+        # Evaluate using F1-macro scoring (balances performance across classes)
+        # Parallel execution speeds up cross-validation
         cv_scores = cross_val_score(
             rf, X_train, y_train, 
             cv=group_kfold, 
             groups=groups_train,
-            scoring='f1_macro',
-            n_jobs=-1
+            scoring='f1_macro',  # Unweighted average of per-class F1 scores
+            n_jobs=-1  # Use all available CPU cores
         )
         
         return cv_scores.mean()
@@ -106,35 +127,42 @@ def optimize_hyperparameters(X_train, y_train, groups_train):
     study.optimize(objective, n_trials=30, show_progress_bar=True)
     
     print(f"Best params: {study.best_params}")
-    print(f"Best score: {study.best_value:.4f}")
+    print(f"Best CV score: {study.best_value:.4f}")
     
     return study
 
-def train_and_evaluate(X_train, y_train, X_val, y_val, best_params, feature_names):
-    """Train final model and evaluate"""
+def train_and_evaluate(X_train, y_train, X_test, y_test, best_params, feature_names):
+    """Train final model and evaluate on test set"""
     print("Training final model...")
     
+    # Create final Random Forest model with optimized hyperparameters
     model = RandomForestClassifier(
-        bootstrap=True,
-        oob_score=True,
-        random_state=RANDOM_SEED,
-        n_jobs=-1,
-        **best_params
+        bootstrap=True,      # Enable bagging (bootstrap aggregating)
+        oob_score=True,      # Compute out-of-bag error estimate
+        random_state=RANDOM_SEED,  # Ensure reproducible results
+        n_jobs=-1,           # Parallel training across all CPU cores
+        **best_params        # Apply Optuna-optimized hyperparameters
     )
     
     model.fit(X_train, y_train)
-    y_pred = model.predict(X_val)
-    y_pred_proba = model.predict_proba(X_val)
+    
+    # Measure inference time for deployment performance assessment
+    start_inference = time.time()
+    y_pred = model.predict(X_test)        # Hard class predictions
+    y_pred_proba = model.predict_proba(X_test)  # Probability estimates
+    end_inference = time.time()
+    inference_time = end_inference - start_inference
     
     # Evaluate
-    f1_macro = f1_score(y_val, y_pred, average='macro')
-    print(f"Validation F1-macro: {f1_macro:.4f}")
+    f1_macro = f1_score(y_test, y_pred, average='macro')
+    print(f"Test F1-macro: {f1_macro:.4f}")
     print(f"OOB Score: {model.oob_score_:.4f}")
+    print(f"Inference time: {inference_time:.4f} seconds ({len(X_test)} samples)")
     
     # Classification report
     class_names = ['air swing', 'full power', 'stable']
     print("\nClassification Report:")
-    print(classification_report(y_val, y_pred, target_names=class_names))
+    print(classification_report(y_test, y_pred, target_names=class_names))
     
     # Save model
     joblib.dump(model, OUTPUT_DIR / 'random_forest.pkl')
@@ -150,13 +178,14 @@ def train_and_evaluate(X_train, y_train, X_val, y_val, best_params, feature_name
     # Simple visualization
     create_simple_plots(model, feature_names)
     
-    return model, y_pred, y_pred_proba, f1_macro
+    return model, y_pred, y_pred_proba, f1_macro, inference_time
 
 def create_simple_plots(model, feature_names):
     """Create simple feature importance plot"""
-    # Feature importance
+    # Extract feature importance based on Gini impurity reduction
+    # Higher values indicate features that contribute more to node purity
     importance = model.feature_importances_
-    top_20_indices = np.argsort(importance)[-20:]
+    top_20_indices = np.argsort(importance)[-20:]  # Select most important features
     
     plt.figure(figsize=(10, 8))
     plt.barh(range(20), importance[top_20_indices], color='forestgreen', alpha=0.8)
@@ -168,7 +197,7 @@ def create_simple_plots(model, feature_names):
     plt.savefig(OUTPUT_DIR / 'feature_importance.png', dpi=150, bbox_inches='tight')
     plt.close()
 
-def save_results(model, study, f1_score, feature_names, total_time, start_time, end_time):
+def save_results(model, study, f1_score, feature_names, total_time, start_time, end_time, inference_time):
     """Save experiment results"""
     results = {
         'model_type': 'Random Forest',
@@ -181,6 +210,8 @@ def save_results(model, study, f1_score, feature_names, total_time, start_time, 
         'timing': {
             'total_training_time_seconds': float(total_time),
             'total_training_time_minutes': float(total_time / 60),
+            'inference_time_seconds': float(inference_time),
+            'inference_time_per_sample_ms': float(inference_time * 1000 / model.n_estimators),
             'start_time': start_time,
             'end_time': end_time,
             'includes_hyperparameter_optimization': True
@@ -245,7 +276,7 @@ def save_trial_data(study):
 
 def save_evaluation_metrics(y_true, y_pred, y_pred_proba, model_name="Random_Forest"):
     """Save comprehensive evaluation metrics for plotting"""
-    from sklearn.metrics import precision_recall_fscore_support, confusion_matrix
+    from sklearn.metrics import precision_recall_fscore_support, confusion_matrix, roc_auc_score
     
     # Calculate metrics
     precision, recall, f1, support = precision_recall_fscore_support(y_true, y_pred, average=None)
@@ -253,8 +284,19 @@ def save_evaluation_metrics(y_true, y_pred, y_pred_proba, model_name="Random_For
     f1_micro = f1_score(y_true, y_pred, average='micro')
     f1_weighted = f1_score(y_true, y_pred, average='weighted')
     
+    # Calculate ROC-AUC (multiclass)
+    try:
+        roc_auc_ovr = roc_auc_score(y_true, y_pred_proba, multi_class='ovr', average='macro')
+        roc_auc_ovo = roc_auc_score(y_true, y_pred_proba, multi_class='ovo', average='macro')
+    except ValueError:
+        roc_auc_ovr = roc_auc_ovo = 0.0
+    
     # Confusion matrix
     cm = confusion_matrix(y_true, y_pred)
+    
+    # Calculate per-class precision, recall for PR curves
+    precision_macro = precision_recall_fscore_support(y_true, y_pred, average='macro')[0]
+    recall_macro = precision_recall_fscore_support(y_true, y_pred, average='macro')[1]
     
     # Comprehensive metrics
     eval_metrics = {
@@ -265,7 +307,11 @@ def save_evaluation_metrics(y_true, y_pred, y_pred_proba, model_name="Random_For
         'f1_per_class': f1.tolist(),
         'precision_per_class': precision.tolist(),
         'recall_per_class': recall.tolist(),
+        'precision_macro': float(precision_macro),
+        'recall_macro': float(recall_macro),
         'support_per_class': support.tolist(),
+        'roc_auc_ovr': float(roc_auc_ovr),
+        'roc_auc_ovo': float(roc_auc_ovo),
         'confusion_matrix': cm.tolist(),
         'class_names': ['air_swing', 'full_power', 'stable'],
         'y_true': y_true.tolist(),
@@ -278,6 +324,7 @@ def save_evaluation_metrics(y_true, y_pred, y_pred_proba, model_name="Random_For
         json.dump(eval_metrics, f, indent=2)
     
     print("Evaluation metrics saved for plotting")
+    print(f"ROC-AUC (OvR): {roc_auc_ovr:.4f}, ROC-AUC (OvO): {roc_auc_ovo:.4f}")
 
 def main():
     """Main experiment function"""
@@ -289,19 +336,19 @@ def main():
     print(f"Experiment started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Load data (already scaled from ETL)
-    X_train, y_train, groups_train, X_val, y_val, feature_cols = load_data()
+    X_train, y_train, groups_train, X_test, y_test, feature_cols = load_data()
     
     # Drop collinear features (minimal for RF)
-    X_train_filtered, X_val_filtered, filtered_features = drop_collinear_features_rf(
-        X_train, X_val, feature_cols
+    X_train_filtered, X_test_filtered, filtered_features = drop_collinear_features_rf(
+        X_train, X_test, feature_cols
     )
     
     # Optimize hyperparameters
     study = optimize_hyperparameters(X_train_filtered, y_train, groups_train)
     
     # Train and evaluate
-    model, y_pred, y_pred_proba, f1_val = train_and_evaluate(
-        X_train_filtered, y_train, X_val_filtered, y_val, 
+    model, y_pred, y_pred_proba, f1_val, inference_time = train_and_evaluate(
+        X_train_filtered, y_train, X_test_filtered, y_test, 
         study.best_params, filtered_features
     )
     
@@ -313,13 +360,16 @@ def main():
     print(f"Experiment completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Total experiment time: {total_time/60:.2f} minutes")
     
-    # Save results
-    save_results(model, study, f1_val, filtered_features, total_time, start_timestamp, end_timestamp)
+    # Save comprehensive results including model performance, timing, and configuration
+    # Enables systematic comparison with other algorithms in the pipeline
+    save_results(model, study, f1_val, filtered_features, total_time, start_timestamp, end_timestamp, inference_time)
     
-    # Save evaluation metrics
-    save_evaluation_metrics(y_val, y_pred, y_pred_proba)
+    # Save detailed evaluation metrics for advanced visualization and analysis
+    # Supports ROC curves, confusion matrices, and cross-model comparisons
+    save_evaluation_metrics(y_test, y_pred, y_pred_proba)
     
-    # Save trial data
+    # Save hyperparameter optimization history for convergence analysis
+    # Enables post-hoc analysis of optimization effectiveness and parameter sensitivity
     save_trial_data(study)
     
     print("=== Experiment Complete ===")

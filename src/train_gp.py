@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 COMP4702 Assignment: Gaussian Process for Table Tennis Swing Classification
-Simplified implementation for assignment use.
 """
 
 import pandas as pd
@@ -13,7 +12,7 @@ from pathlib import Path
 from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
 from sklearn.model_selection import GroupKFold, cross_val_score
-from sklearn.metrics import classification_report, f1_score
+from sklearn.metrics import classification_report, f1_score, roc_auc_score
 import optuna
 import warnings
 import time
@@ -21,17 +20,17 @@ from datetime import datetime
 warnings.filterwarnings('ignore')
 
 # Configuration
-RANDOM_SEED = 42
+RANDOM_SEED = 123
 np.random.seed(RANDOM_SEED)
 
 DATA_PATH = "data/processed/assignTTSWING_processed.csv"
 TRAIN_SPLIT_PATH = "splits/train_indices.json"
-VAL_SPLIT_PATH = "splits/val_indices.json"
+TEST_SPLIT_PATH = "splits/test_indices.json"
 OUTPUT_DIR = Path("results/gaussian_process")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def select_best_features_for_gp():
-    """Select top 5-8 features from RF and LightGBM results, avoiding collinearity"""
+    """Select optimal feature subset for Gaussian Process efficiency."""
     print("Selecting best features for GP from RF and LightGBM results...")
     
     # Try to load feature importance from trained models
@@ -134,14 +133,14 @@ def select_best_features_for_gp():
     return final_features
 
 def load_data():
-    """Load dataset and splits with feature selection for GP efficiency"""
+    """Load and prepare data optimized for Gaussian Process training."""
     print("Loading dataset with GP feature selection...")
     df = pd.read_csv(DATA_PATH)
     
     with open(TRAIN_SPLIT_PATH, 'r') as f:
         train_indices = json.load(f)
-    with open(VAL_SPLIT_PATH, 'r') as f:
-        val_indices = json.load(f)
+    with open(TEST_SPLIT_PATH, 'r') as f:
+        test_indices = json.load(f)
     
     # Get selected features for GP
     selected_features = select_best_features_for_gp()
@@ -160,8 +159,8 @@ def load_data():
     X_train = X.iloc[train_indices]
     y_train = y.iloc[train_indices]
     groups_train = groups.iloc[train_indices]
-    X_val = X.iloc[val_indices]
-    y_val = y.iloc[val_indices]
+    X_test = X.iloc[test_indices]
+    y_test = y.iloc[test_indices]
     
     # Subset for GP due to O(n³) complexity
     subset_size = 2000  # Can be larger with fewer features
@@ -182,58 +181,67 @@ def load_data():
         
         print(f"Using balanced subset for GP: {len(X_train)} samples")
     
-    print(f"Training: {X_train.shape}, Validation: {X_val.shape}")
+    print(f"Training: {X_train.shape}, Test: {X_test.shape}")
     print(f"Selected features: {list(X_train.columns)}")
-    return X_train, y_train, groups_train, X_val, y_val, available_features
+    return X_train, y_train, groups_train, X_test, y_test, available_features
 
 def optimize_hyperparameters(X_train, y_train, groups_train):
-    """Optimize GP hyperparameters using Optuna"""
+    """Optimize Gaussian Process hyperparameters using Bayesian optimization."""
     print("Optimizing hyperparameters...")
     
     def objective(trial):
-        # Suggest kernel parameters
+        # Suggest RBF kernel hyperparameters for GP optimization
+        # Length scale controls similarity decay with distance
         length_scale = trial.suggest_float('length_scale', 0.1, 10.0, log=True)
+        # Bounds control if length scale is optimized during training
         length_scale_bounds = trial.suggest_categorical('length_scale_bounds', 
                                                       ['fixed', (1e-3, 1e3)])
         
+        # Construct composite kernel: Constant * RBF
+        # Constant kernel captures overall function amplitude
+        # RBF kernel models smooth similarity based on Euclidean distance
         if length_scale_bounds == 'fixed':
             kernel = C(1.0, (1e-3, 1e3)) * RBF(length_scale)
         else:
             kernel = C(1.0, (1e-3, 1e3)) * RBF(length_scale, length_scale_bounds)
         
+        # Create Gaussian Process classifier with constructed kernel
         gp = GaussianProcessClassifier(
-            kernel=kernel,
-            random_state=RANDOM_SEED,
-            max_iter_predict=50,
-            n_restarts_optimizer=1  # Keep low for speed
+            kernel=kernel,               # RBF kernel with suggested hyperparameters
+            random_state=RANDOM_SEED,    # Reproducible results
+            max_iter_predict=50,         # Max iterations for prediction optimization
+            n_restarts_optimizer=1       # Limited restarts to control training time
         )
         
-        # Use 3-fold CV with fewer features
+        # Reduced cross-validation splits due to GP's O(n³) computational cost
+        # Still maintains group-aware validation to prevent data leakage
         group_kfold = GroupKFold(n_splits=3)
         
+        # Evaluate GP using group-aware cross-validation
+        # n_jobs=1 to avoid memory issues with multiple GP training processes
         cv_scores = cross_val_score(
             gp, X_train, y_train,
-            cv=group_kfold,
-            groups=groups_train,
-            scoring='f1_macro',
-            n_jobs=1
+            cv=group_kfold,           # Group-aware splits
+            groups=groups_train,      # Player IDs for grouping
+            scoring='f1_macro',       # Balanced multiclass metric
+            n_jobs=1                  # Sequential execution for memory efficiency
         )
         
         return cv_scores.mean()
     
     study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=15, show_progress_bar=True)  # More trials with fewer features
+    study.optimize(objective, n_trials=15, show_progress_bar=True)
     
     print(f"Best params: {study.best_params}")
     print(f"Best score: {study.best_value:.4f}")
     
     return study
 
-def train_and_evaluate(X_train, y_train, X_val, y_val, best_params, feature_names):
-    """Train final model and evaluate"""
+def train_and_evaluate(X_train, y_train, X_test, y_test, best_params, feature_names):
+    """Train final Gaussian Process model and evaluate with uncertainty analysis."""
     print("Training final model...")
     
-    # Build kernel from best params
+    # Reconstruct optimal kernel configuration from best hyperparameters
     length_scale = best_params['length_scale']
     length_scale_bounds = best_params['length_scale_bounds']
     
@@ -242,51 +250,72 @@ def train_and_evaluate(X_train, y_train, X_val, y_val, best_params, feature_name
     else:
         kernel = C(1.0, (1e-3, 1e3)) * RBF(length_scale, length_scale_bounds)
     
+    # Create final GP model with optimized kernel and more thorough optimization
     model = GaussianProcessClassifier(
-        kernel=kernel,
-        random_state=RANDOM_SEED,
-        max_iter_predict=50,
-        n_restarts_optimizer=2
+        kernel=kernel,               # Optimized RBF kernel configuration
+        random_state=RANDOM_SEED,    # Ensure reproducible training
+        max_iter_predict=50,         # Max iterations for prediction optimization
+        n_restarts_optimizer=2       # More restarts for final model training
     )
     
     model.fit(X_train, y_train)
-    y_pred = model.predict(X_val)
-    y_pred_proba = model.predict_proba(X_val)
+    
+    # Measure GP inference time (scales as O(n) per prediction)
+    start_inference = time.time()
+    y_pred = model.predict(X_test)        # Hard class predictions
+    y_pred_proba = model.predict_proba(X_test)  # Bayesian probability estimates
+    end_inference = time.time()
+    inference_time = end_inference - start_inference
     
     # Evaluate
-    f1_macro = f1_score(y_val, y_pred, average='macro')
-    print(f"Validation F1-macro: {f1_macro:.4f}")
+    f1_macro = f1_score(y_test, y_pred, average='macro')
+    print(f"Test F1-macro: {f1_macro:.4f}")
+    print(f"Inference time: {inference_time:.4f} seconds ({len(X_test)} samples)")
     
     # Classification report
     class_names = ['air swing', 'full power', 'stable']
     print("\nClassification Report:")
-    print(classification_report(y_val, y_pred, target_names=class_names))
+    print(classification_report(y_test, y_pred, target_names=class_names))
     
-    # Uncertainty analysis
-    max_proba = np.max(y_pred_proba, axis=1)
-    uncertainty = 1 - max_proba
+    # Compute prediction uncertainty from GP posterior probabilities
+    # Higher uncertainty indicates lower model confidence
+    max_proba = np.max(y_pred_proba, axis=1)  # Maximum class probability
+    uncertainty = 1 - max_proba               # Uncertainty = 1 - confidence
     print(f"Mean uncertainty: {np.mean(uncertainty):.4f}")
     
     # Save model
     joblib.dump(model, OUTPUT_DIR / 'gaussian_process.pkl')
     
-    # Save kernel information
+    # Save learned kernel parameters and model evidence
     kernel_info = {
-        'learned_kernel': str(model.kernel_),
-        'kernel_params': str(model.kernel_.get_params()),
-        'log_marginal_likelihood': float(model.log_marginal_likelihood_value_)
+        'learned_kernel': str(model.kernel_),     # Final kernel structure
+        'kernel_params': str(model.kernel_.get_params()),  # Hyperparameter values
+        'log_marginal_likelihood': float(model.log_marginal_likelihood_value_)  # Bayesian model evidence
     }
     
     with open(OUTPUT_DIR / 'kernel_info.json', 'w') as f:
         json.dump(kernel_info, f, indent=2)
     
+    # Save uncertainty data for GP-specific analysis
+    uncertainty_data = {
+        'uncertainty_values': uncertainty.tolist(),
+        'max_probabilities': max_proba.tolist(),
+        'mean_uncertainty': float(np.mean(uncertainty)),
+        'std_uncertainty': float(np.std(uncertainty)),
+        'high_uncertainty_threshold': 0.5,
+        'high_uncertainty_count': int(np.sum(uncertainty > 0.5))
+    }
+    
+    with open(OUTPUT_DIR / 'uncertainty_analysis.json', 'w') as f:
+        json.dump(uncertainty_data, f, indent=2)
+    
     # Simple visualization
     create_simple_plots(uncertainty, model)
     
-    return model, y_pred, y_pred_proba, f1_macro, uncertainty
+    return model, y_pred, y_pred_proba, f1_macro, uncertainty, inference_time
 
 def create_simple_plots(uncertainty, model):
-    """Create simple uncertainty and kernel plots"""
+    """Generate Gaussian Process-specific visualizations."""
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
     # Uncertainty distribution
@@ -330,8 +359,43 @@ High Uncertainty (>0.5): {np.sum(uncertainty > 0.5)} samples"""
     plt.savefig(OUTPUT_DIR / 'gp_analysis.png', dpi=150, bbox_inches='tight')
     plt.close()
 
-def save_results(model, study, f1_score, feature_names, uncertainty, total_time, start_time, end_time):
-    """Save experiment results"""
+def save_results(model, study, f1_score, feature_names, uncertainty, total_time, start_time, end_time, inference_time):
+    """
+    Save comprehensive Gaussian Process experiment results.
+    
+    **COMP4702 Concept - GP Model Evaluation:**
+    GP results include unique metrics not available in other models:
+    - Kernel configuration and learned hyperparameters
+    - Log marginal likelihood as model evidence
+    - Uncertainty statistics for prediction confidence analysis
+    - Computational complexity metrics (training and inference times)
+    
+    **GP-Specific Metrics:**
+    - **Kernel String**: Learned kernel structure and parameters
+    - **Log Marginal Likelihood**: Bayesian model evidence
+    - **Mean Uncertainty**: Average prediction confidence
+    - **Feature Selection**: Dimensionality reduction effectiveness
+    
+    **Uncertainty Analysis:**
+    - Distribution of prediction uncertainties
+    - High-uncertainty sample identification
+    - Relationship between uncertainty and prediction accuracy
+    
+    Args:
+        model (GaussianProcessClassifier): Trained GP with learned kernel
+        study (optuna.Study): Hyperparameter optimization results
+        f1_score (float): Final F1-macro score on test set
+        feature_names (list): Selected features for GP training
+        uncertainty (np.ndarray): Prediction uncertainty values
+        total_time (float): Total training time including optimization
+        start_time (str): ISO timestamp of experiment start
+        end_time (str): ISO timestamp of experiment end
+        inference_time (float): Model inference time per sample
+    
+    Note:
+        GP results enable comparison of Bayesian vs frequentist approaches
+        and highlight the value of uncertainty quantification.
+    """
     results = {
         'model_type': 'Gaussian Process',
         'best_params': study.best_params,
@@ -344,6 +408,8 @@ def save_results(model, study, f1_score, feature_names, uncertainty, total_time,
         'timing': {
             'total_training_time_seconds': float(total_time),
             'total_training_time_minutes': float(total_time / 60),
+            'inference_time_seconds': float(inference_time),
+            'inference_time_per_sample_ms': float(inference_time * 1000 / len(uncertainty)),
             'start_time': start_time,
             'end_time': end_time,
             'includes_hyperparameter_optimization': True
@@ -406,7 +472,7 @@ def save_trial_data(study):
 
 def save_evaluation_metrics(y_true, y_pred, y_pred_proba, model_name="Gaussian_Process"):
     """Save comprehensive evaluation metrics for plotting"""
-    from sklearn.metrics import precision_recall_fscore_support, confusion_matrix
+    from sklearn.metrics import precision_recall_fscore_support, confusion_matrix, roc_auc_score
     
     # Calculate metrics
     precision, recall, f1, support = precision_recall_fscore_support(y_true, y_pred, average=None)
@@ -414,8 +480,19 @@ def save_evaluation_metrics(y_true, y_pred, y_pred_proba, model_name="Gaussian_P
     f1_micro = f1_score(y_true, y_pred, average='micro')
     f1_weighted = f1_score(y_true, y_pred, average='weighted')
     
+    # Calculate ROC-AUC (multiclass)
+    try:
+        roc_auc_ovr = roc_auc_score(y_true, y_pred_proba, multi_class='ovr', average='macro')
+        roc_auc_ovo = roc_auc_score(y_true, y_pred_proba, multi_class='ovo', average='macro')
+    except ValueError:
+        roc_auc_ovr = roc_auc_ovo = 0.0
+    
     # Confusion matrix
     cm = confusion_matrix(y_true, y_pred)
+    
+    # Calculate per-class precision, recall for PR curves
+    precision_macro = precision_recall_fscore_support(y_true, y_pred, average='macro')[0]
+    recall_macro = precision_recall_fscore_support(y_true, y_pred, average='macro')[1]
     
     # Comprehensive metrics
     eval_metrics = {
@@ -426,7 +503,11 @@ def save_evaluation_metrics(y_true, y_pred, y_pred_proba, model_name="Gaussian_P
         'f1_per_class': f1.tolist(),
         'precision_per_class': precision.tolist(),
         'recall_per_class': recall.tolist(),
+        'precision_macro': float(precision_macro),
+        'recall_macro': float(recall_macro),
         'support_per_class': support.tolist(),
+        'roc_auc_ovr': float(roc_auc_ovr),
+        'roc_auc_ovo': float(roc_auc_ovo),
         'confusion_matrix': cm.tolist(),
         'class_names': ['air_swing', 'full_power', 'stable'],
         'y_true': y_true.tolist(),
@@ -439,9 +520,46 @@ def save_evaluation_metrics(y_true, y_pred, y_pred_proba, model_name="Gaussian_P
         json.dump(eval_metrics, f, indent=2)
     
     print("Evaluation metrics saved for plotting")
+    print(f"ROC-AUC (OvR): {roc_auc_ovr:.4f}, ROC-AUC (OvO): {roc_auc_ovo:.4f}")
 
 def main():
-    """Main experiment function"""
+    """
+    Execute complete Gaussian Process training and evaluation pipeline.
+    
+    **COMP4702 Bayesian ML Pipeline:**
+    1. **Feature Selection**: Optimize feature subset for GP computational efficiency
+    2. **Data Sampling**: Balance class distribution while managing O(n³) complexity
+    3. **Hyperparameter Optimization**: Bayesian search with marginal likelihood
+    4. **Model Training**: Kernel matrix inversion and posterior computation
+    5. **Uncertainty Analysis**: Quantify prediction confidence and identify outliers
+    6. **Results Saving**: Include GP-specific metrics and uncertainty data
+    
+    **Gaussian Process Advantages Demonstrated:**
+    - **Uncertainty Quantification**: Natural confidence estimates for each prediction
+    - **Bayesian Framework**: Principled approach to model selection and inference
+    - **Kernel Learning**: Data-driven similarity measures through hyperparameter optimization
+    - **Non-parametric**: Flexible function approximation without fixed form assumptions
+    - **Small Data Performance**: Excellent results with limited training samples
+    
+    **Computational Management:**
+    - Feature selection reduces dimensionality for efficiency
+    - Balanced sampling maintains class distribution within computational limits
+    - Limited hyperparameter trials due to O(n³) cost per evaluation
+    - Comprehensive uncertainty analysis unique to Bayesian methods
+    
+    **Educational Value:**
+    This pipeline demonstrates advanced COMP4702 concepts including:
+    - Bayesian machine learning principles
+    - Kernel methods and implicit feature spaces
+    - Uncertainty quantification in machine learning
+    - Computational complexity management
+    - Non-parametric modeling approaches
+    
+    Note:
+        GP represents the pinnacle of theoretical machine learning,
+        combining Bayesian inference, kernel methods, and uncertainty
+        quantification in a principled probabilistic framework.
+    """
     print("=== Gaussian Process Experiment ===")
     
     # Start timing
@@ -449,15 +567,18 @@ def main():
     start_timestamp = datetime.now().isoformat()
     print(f"Experiment started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    # Load data (already scaled from ETL)
-    X_train, y_train, groups_train, X_val, y_val, feature_cols = load_data()
+    # Load optimally selected features for GP efficiency
+    # Feature selection critical due to O(n³) computational complexity
+    X_train, y_train, groups_train, X_test, y_test, feature_cols = load_data()
     
-    # Optimize hyperparameters
+    # Bayesian hyperparameter optimization for kernel parameters
+    # Limited trials due to high computational cost of GP training
     study = optimize_hyperparameters(X_train, y_train, groups_train)
     
-    # Train and evaluate
-    model, y_pred, y_pred_proba, f1_val, uncertainty = train_and_evaluate(
-        X_train, y_train, X_val, y_val, 
+    # Train final GP model with optimized kernel hyperparameters
+    # Includes uncertainty quantification unique to Bayesian methods
+    model, y_pred, y_pred_proba, f1_val, uncertainty, inference_time = train_and_evaluate(
+        X_train, y_train, X_test, y_test, 
         study.best_params, feature_cols
     )
     
@@ -470,10 +591,10 @@ def main():
     print(f"Total experiment time: {total_time/60:.2f} minutes")
     
     # Save results
-    save_results(model, study, f1_val, feature_cols, uncertainty, total_time, start_timestamp, end_timestamp)
+    save_results(model, study, f1_val, feature_cols, uncertainty, total_time, start_timestamp, end_timestamp, inference_time)
     
     # Save evaluation metrics
-    save_evaluation_metrics(y_val, y_pred, y_pred_proba)
+    save_evaluation_metrics(y_test, y_pred, y_pred_proba)
     
     # Save trial data
     save_trial_data(study)

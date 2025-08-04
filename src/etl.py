@@ -3,12 +3,7 @@
 Enhanced Data Preprocessing Pipeline
 COMP4702 Assignment - Table Tennis Swing Classification
 
-Simple preprocessing pipeline with 5 key steps:
-1. Removing missing and irrelevant data
-2. Converting to physical units (g, °/s, rad/s) 
-3. Encoding categorical variables
-4. Feature scaling with StandardScaler
-5. Data validation
+Simplified implementation for assignment use.
 """
 
 import pandas as pd
@@ -78,7 +73,7 @@ def convert_to_physical_units(df):
     return df
 
 def encode_categorical_variables(df):
-    """Step 3: Encode categorical variables."""
+    """Step 3: Encode categorical variables for machine learning."""
     print("3. Encoding categorical variables:")
     
     # One-hot encode demographic buckets

@@ -1,15 +1,7 @@
 #!/usr/bin/env python3
 """
 Exploratory Data Analysis for COMP4702 Assignment
-
-Performs comprehensive exploratory data analysis on the raw table tennis swing dataset
-to understand feature distributions, class balance, and relationships between variables.
-
-Week 1-2 Concepts:
-- Descriptive statistics and data summarization
-- Data visualization and pattern recognition
-- Class distribution analysis
-- Feature correlation analysis
+Table Tennis Swing Classification - IMU Sensor Data Analysis
 """
 
 import argparse
@@ -29,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 def setup_output_directory(output_dir):
-    """Create output directory structure"""
+    """Create organized directory structure for EDA outputs."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
@@ -42,7 +34,7 @@ def setup_output_directory(output_dir):
     return output_path
 
 def load_and_inspect_data(input_path):
-    """Load raw data and perform initial inspection"""
+    """Load dataset and perform comprehensive initial inspection."""
     logger.info(f"Loading data from {input_path}")
     
     df = pd.read_csv(input_path)
@@ -72,7 +64,7 @@ def load_and_inspect_data(input_path):
     return df
 
 def analyze_target_distribution(df, output_path):
-    """Analyze and visualize target variable distribution"""
+    """Comprehensive analysis of target variable distribution and class balance."""
     logger.info("Analyzing target variable distribution")
     
     # Class distribution analysis
@@ -118,7 +110,7 @@ def analyze_target_distribution(df, output_path):
     return class_counts
 
 def analyze_player_distribution(df, output_path):
-    """Analyze distribution of samples across players"""
+    """Analyze hierarchical data structure with players and samples."""
     logger.info("Analyzing player distribution")
     
     player_counts = df['id'].value_counts()
@@ -161,7 +153,36 @@ def analyze_player_distribution(df, output_path):
     plt.close()
 
 def analyze_feature_distributions(df, output_path):
-    """Analyze distribution of features"""
+    """
+    Comprehensive analysis of feature distributions and characteristics.
+    
+    **COMP4702 Concept - Feature Analysis:**
+    Understanding feature distributions guides:
+    - **Preprocessing Decisions**: Scaling, normalization, transformation needs
+    - **Algorithm Selection**: Parametric vs non-parametric methods
+    - **Outlier Detection**: Identification of anomalous measurements
+    - **Feature Engineering**: Opportunities for derived features
+    
+    **Distribution Analysis:**
+    - **Descriptive Statistics**: Central tendency, dispersion, shape measures
+    - **Distribution Shape**: Normality, skewness, multimodality assessment
+    - **Outlier Identification**: Extreme values and measurement errors
+    - **Class-Conditional Distributions**: Feature behavior across swing types
+    
+    **IMU Sensor Characteristics:**
+    - **Accelerometer Features**: Linear motion measurements (ax_, ay_, az_)
+    - **Gyroscope Features**: Rotational motion measurements (gx_, gy_, gz_)
+    - **Statistical Features**: Mean, variance, entropy, spectral properties
+    - **Temporal Features**: Time-domain characteristics of swing motion
+    
+    Args:
+        df (pd.DataFrame): Dataset with numeric sensor features
+        output_path (Path): Directory for saving distribution analysis
+    
+    Note:
+        Focuses on key sensor modalities and statistical measures most
+        relevant for motion classification in table tennis applications.
+    """
     logger.info("Analyzing feature distributions")
     
     # Identify feature types
@@ -236,7 +257,41 @@ def analyze_feature_distributions(df, output_path):
         plt.close()
 
 def analyze_correlations(df, output_path):
-    """Analyze feature correlations"""
+    """
+    Comprehensive correlation analysis for multicollinearity assessment.
+    
+    **COMP4702 Concept - Correlation Analysis:**
+    Feature correlation analysis identifies:
+    - **Multicollinearity**: Highly correlated predictors affecting model stability
+    - **Redundant Features**: Similar information from multiple measurements
+    - **Feature Groups**: Natural clustering of related sensor measurements
+    - **Dimensionality Reduction**: Opportunities for feature selection/extraction
+    
+    **Correlation Patterns in IMU Data:**
+    - **Within-Sensor Correlation**: Related measurements from same sensor
+    - **Across-Sensor Correlation**: Coordinated motion patterns
+    - **Statistical Measure Correlation**: Similar statistical summaries
+    - **Temporal Correlation**: Time-dependent measurement relationships
+    
+    **Analysis Components:**
+    - **Correlation Matrix**: Pairwise linear relationships
+    - **Heatmap Visualization**: Pattern identification in high-dimensional space
+    - **High Correlation Detection**: Threshold-based multicollinearity identification
+    - **Feature Grouping**: Natural clusters of related measurements
+    
+    **Multicollinearity Implications:**
+    - **Linear Models**: Coefficient instability and interpretation issues
+    - **Tree Models**: Reduced impact but potential redundancy
+    - **Feature Selection**: Prioritize uncorrelated informative features
+    
+    Args:
+        df (pd.DataFrame): Dataset with numeric features for correlation analysis
+        output_path (Path): Directory for saving correlation analysis outputs
+    
+    Note:
+        Uses conservative threshold (|r| > 0.8) for high correlation
+        identification suitable for diverse machine learning algorithms.
+    """
     logger.info("Analyzing feature correlations")
     
     # Select numeric features for correlation analysis
@@ -293,7 +348,41 @@ def analyze_correlations(df, output_path):
             logger.info(f"No feature pairs found with |correlation| > {high_corr_threshold}")
 
 def analyze_class_separability(df, output_path):
-    """Analyze how well features separate different classes"""
+    """
+    Analyze feature discriminative power for class separation.
+    
+    **COMP4702 Concept - Feature Discriminative Analysis:**
+    Identifies features with strongest class separation ability:
+    - **Between-Class Variance**: Variation in feature means across classes
+    - **Within-Class Variance**: Consistency within each class
+    - **Separability Ratio**: Quantitative measure of discrimination power
+    - **Feature Ranking**: Prioritization for feature selection
+    
+    **Discriminative Analysis:**
+    - **Class-Conditional Means**: Average feature values per swing type
+    - **Variance Decomposition**: Between-class vs within-class variation
+    - **F-Ratio Equivalent**: Statistical measure of class separability
+    - **Visual Assessment**: Distribution overlap and separation patterns
+    
+    **IMU Sensor Discrimination:**
+    - **Motion Signatures**: Unique sensor patterns for different swing types
+    - **Axis-Specific Patterns**: Different discriminative power across X/Y/Z axes
+    - **Statistical Measures**: Most informative summary statistics
+    - **Temporal Characteristics**: Time-domain features with class-specific patterns
+    
+    **Feature Selection Implications:**
+    - **Univariate Selection**: Individual feature discriminative power
+    - **Redundancy Avoidance**: Balance discrimination with correlation
+    - **Algorithm Guidance**: Inform model-specific feature selection
+    
+    Args:
+        df (pd.DataFrame): Dataset with features and 'testmode' target
+        output_path (Path): Directory for saving separability analysis
+    
+    Note:
+        Provides quantitative ranking of features by discriminative power,
+        supporting evidence-based feature selection decisions.
+    """
     logger.info("Analyzing class separability")
     
     # Select numeric features
@@ -366,7 +455,37 @@ def analyze_class_separability(df, output_path):
             logger.info(f"- {row['feature']}: {row['separability_ratio']:.3f}")
 
 def generate_summary_report(df, class_counts, output_path):
-    """Generate a comprehensive summary report"""
+    """
+    Generate comprehensive EDA summary report in Markdown format.
+    
+    **COMP4702 Concept - Analysis Documentation:**
+    Professional data analysis requires comprehensive documentation:
+    - **Executive Summary**: Key findings and implications
+    - **Data Overview**: Dataset characteristics and structure
+    - **Statistical Summary**: Quantitative analysis results
+    - **Recommendations**: Actionable insights for modeling
+    
+    **Report Components:**
+    - **Dataset Overview**: Size, structure, and basic characteristics
+    - **Class Analysis**: Distribution, imbalance, and implications
+    - **Feature Summary**: Key patterns and relationships identified
+    - **Methodological Recommendations**: Suggested approaches based on findings
+    
+    **Educational Value:**
+    - **Professional Documentation**: Industry-standard reporting practices
+    - **Reproducible Research**: Clear methodology and findings documentation
+    - **Decision Support**: Evidence-based recommendations for next steps
+    - **Communication Skills**: Technical findings in accessible format
+    
+    Args:
+        df (pd.DataFrame): Complete dataset for summary statistics
+        class_counts (pd.Series): Class distribution for imbalance analysis
+        output_path (Path): Directory for saving the summary report
+    
+    Note:
+        Creates professional Markdown report suitable for academic
+        submission and industry presentation of analysis findings.
+    """
     logger.info("Generating summary report")
     
     exclude_cols = ['id', 'testmode']
@@ -424,6 +543,8 @@ def generate_summary_report(df, class_counts, output_path):
     logger.info("Summary report saved to eda_summary_report.md")
 
 def main():
+    """Execute comprehensive exploratory data analysis pipeline."""
+    # Parse command line arguments for flexible analysis execution
     parser = argparse.ArgumentParser(description='Perform exploratory data analysis on table tennis swing data')
     parser.add_argument('--input', required=True, help='Path to raw data CSV file')
     parser.add_argument('--output_dir', required=True, help='Directory to save EDA results')
@@ -433,20 +554,20 @@ def main():
     logger.info(f"Input file: {args.input}")
     logger.info(f"Output directory: {args.output_dir}")
     
-    # Setup output directory
+    # Configure organized output directory structure for professional analysis
     output_path = setup_output_directory(args.output_dir)
     
-    # Load and inspect data
+    # Load dataset and perform comprehensive initial inspection
     df = load_and_inspect_data(args.input)
     
-    # Perform analysis
-    class_counts = analyze_target_distribution(df, output_path)
-    analyze_player_distribution(df, output_path)
-    analyze_feature_distributions(df, output_path)
-    analyze_correlations(df, output_path)
-    analyze_class_separability(df, output_path)
+    # Execute comprehensive exploratory data analysis
+    class_counts = analyze_target_distribution(df, output_path)      # Class imbalance analysis
+    analyze_player_distribution(df, output_path)                     # Hierarchical structure analysis
+    analyze_feature_distributions(df, output_path)                  # Feature distribution patterns
+    analyze_correlations(df, output_path)                          # Multicollinearity assessment
+    analyze_class_separability(df, output_path)                    # Discriminative power analysis
     
-    # Generate summary report
+    # Create comprehensive summary report with findings and recommendations
     generate_summary_report(df, class_counts, output_path)
     
     logger.info("Exploratory Data Analysis completed successfully!")
